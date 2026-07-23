@@ -297,8 +297,8 @@ dialog::backdrop{background:rgba(23,19,15,.62)}
 .wm{
   transform:rotate(-45deg);           /* ล่างซ้ายไปบนขวา */
   font-family:'Anuphan','IBM Plex Sans Thai',sans-serif;font-weight:700;
-  font-size:clamp(2.2rem,9vw,6.5rem);letter-spacing:.04em;white-space:nowrap;
-  color:var(--ink);opacity:.08;user-select:none;
+  font-size:clamp(3.4rem,15vw,13rem);letter-spacing:.02em;white-space:nowrap;
+  color:var(--rust);opacity:.24;user-select:none;
 }
 
 @media(max-width:900px){
