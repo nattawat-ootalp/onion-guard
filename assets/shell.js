@@ -45,6 +45,14 @@
     foot.id = 'statusbar';
     document.body.insertBefore(top, document.body.firstChild);
     document.body.appendChild(foot);
+
+    // ลายน้ำ mockup กลางหน้า เอียงล่างซ้าย→บนขวา (aria-hidden ให้ screen reader ข้าม)
+    var wm = document.createElement('div');
+    wm.className = 'wm-wrap';
+    wm.setAttribute('aria-hidden', 'true');
+    wm.innerHTML = '<div class="wm">MOCKUP จ้าาาา</div>';
+    document.body.appendChild(wm);
+
     render();
   }
 

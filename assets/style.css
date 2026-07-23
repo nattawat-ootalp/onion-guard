@@ -289,6 +289,18 @@ dialog{
 }
 dialog::backdrop{background:rgba(23,19,15,.62)}
 
+/* ---------- ลายน้ำ mockup (ตรงกลางทุกหน้า เอียงล่างซ้าย→บนขวา) ---------- */
+.wm-wrap{
+  position:fixed;inset:0;z-index:40;pointer-events:none;overflow:hidden;
+  display:flex;align-items:center;justify-content:center;
+}
+.wm{
+  transform:rotate(-45deg);           /* ล่างซ้ายไปบนขวา */
+  font-family:'Anuphan','IBM Plex Sans Thai',sans-serif;font-weight:700;
+  font-size:clamp(2.2rem,9vw,6.5rem);letter-spacing:.04em;white-space:nowrap;
+  color:var(--ink);opacity:.08;user-select:none;
+}
+
 @media(max-width:900px){
   .scan-grid,.model-grid,.g2,.g3,.lq-card{grid-template-columns:1fr}
   .topbar{gap:14px;padding:0 14px}
