@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ผลการประเมิน · OnionGuard</title>
+<meta name="description" content="OnionGuard — ROC จุดตัด และตัวอย่างที่ทำนายผิด">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Anuphan:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Thai:wght@300;400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/assets/style.css">
+</head>
+<body>
+
+<main class="page">
+  <div class="phead">
+    <span class="route">/model</span>
+    <h1>ผลการประเมิน</h1>
+    <p class="sub">การตัดสินใจตอนนี้อยู่ที่การเลือกจุดตัด ไม่ใช่แค่รายงานว่าถูกกี่เปอร์เซ็นต์ เส้นโค้ง ROC จึงเป็นภาพหลัก</p>
+  </div>
+
+  <!-- แถบสรุปชุดข้อมูล -->
+  <div class="panel mono" style="display:flex;flex-wrap:wrap;gap:6px 16px;align-items:baseline;font-size:.8rem;letter-spacing:.06em;color:var(--muted);margin-bottom:18px">
+    <span><b style="color:var(--ink);font-size:1.05rem" id="hdTotal">247</b> หัว</span>
+    <span style="color:var(--rule)">·</span>
+    <span>ฝึก <b style="color:var(--ink)" id="hdTrain">173</b></span>
+    <span style="color:var(--rule)">·</span>
+    <span>ทดสอบ <b style="color:var(--ink)" id="hdTest">74</b></span>
+    <span style="color:var(--rule)">·</span>
+    <span>23 ก.ค.</span>
+  </div>
+
+  <div class="model-grid">
+
+    <!-- ซ้าย: ROC เป็นภาพหลัก -->
+    <div class="card">
+      <div class="card-h">เส้นโค้ง ROC <span class="push"></span><span class="mono" id="cardAuc">AUC —</span></div>
+      <div class="card-b stack">
+        <div id="rocPlot"></div>
+        <div>
+          <input type="range" id="cutSlider" min="0.1" max="0.9" step="0.01" value="0.42"
+                 style="width:100%;accent-color:var(--rust)" aria-label="เลือกจุดตัด">
+          <div class="axis"><span>0.10</span><span>เลื่อนเพื่อเลือกจุดตัด</span><span>0.90</span></div>
+          <p class="tiny muted" id="cutRead" style="margin-top:6px"></p>
+        </div>
+        <p class="tiny muted">ลากจุดสีสนิมบนเส้นโค้ง หรือใช้แถบเลื่อน · ความไวและความจำเพาะเปลี่ยนตามจุดตัดทันที</p>
+      </div>
+    </div>
+
+    <!-- ขวา: ตัวเลขหลัก + baseline + กลุ่ม hard negative -->
+    <div class="stack">
+
+      <div class="metrics" id="mainMetrics">
+        <div><span class="k">AUC</span><span class="v" id="mAuc">—</span></div>
+        <div><span class="k">จุดตัด</span><span class="v" id="mCut">—</span></div>
+        <div><span class="k">Sensitivity</span><span class="v" id="mSens">—</span></div>
+        <div><span class="k">Specificity</span><span class="v" id="mSpec">—</span></div>
+      </div>
+
+      <div class="panel stack">
+        <h4 class="lbl">เทียบ baseline · ทำไมต้องมีโมเดล</h4>
+        <div>
+          <div class="row" style="justify-content:space-between">
+            <span class="small">F_p05 เดี่ยว</span>
+            <span class="mono small">AUC 0.74</span>
+          </div>
+          <div class="bar" style="margin-top:5px"><span class="ochre" style="width:74%"></span></div>
+        </div>
+        <div>
+          <div class="row" style="justify-content:space-between">
+            <span class="small">รวมหลายฟีเจอร์</span>
+            <span class="mono small">AUC <b id="aucModelTxt">—</b></span>
+          </div>
+          <div class="bar" style="margin-top:5px"><span class="olive" id="barModel" style="width:86%"></span></div>
+        </div>
+        <p class="tiny muted">ใช้ฟีเจอร์เดียวยังแยกไม่ดีพอ การรวมหลายฟีเจอร์ดัน AUC ขึ้นชัดเจน นี่คือหลักฐานว่าโมเดลมีค่า ไม่ใช่แค่คำกล่าวอ้าง</p>
+      </div>
+
+      <div class="panel stack">
+        <h4 class="lbl">ผลเฉพาะกลุ่ม hard negative</h4>
+        <div class="metrics">
+          <div><span class="k">ขนาดกลุ่ม</span><span class="v" id="hnN">—</span></div>
+          <div><span class="k">Specificity</span><span class="v" id="hnSpec">—</span></div>
+          <div><span class="k">แจ้งเตือนเกิน</span><span class="v" id="hnFp">—</span></div>
+        </div>
+        <p class="tiny muted" id="hnNote">กลุ่มนี้คือหัวปกติที่เรืองแสงหรี่ใกล้เส้นจุดตัด โมเดลแจ้งเตือนเกินง่ายกว่าค่าเฉลี่ย จึงรายงานแยกให้เห็นเด่นเท่ากับตัวเลขหลัก</p>
+      </div>
+
+    </div>
+  </div>
+
+  <hr class="hr">
+
+  <!-- ล่าง: confusion matrix + แกลเลอรีที่ทำนายผิด -->
+  <div class="g2">
+    <div class="card">
+      <div class="card-h">Confusion Matrix ที่จุดตัดนี้ <span class="push"></span><span class="mono" id="cmCut">cut 0.42</span></div>
+      <div class="card-b stack">
+        <div class="cm">
+          <div></div>
+          <div>ทำนาย<br>พบเชื้อ</div>
+          <div>ทำนาย<br>ไม่พบ</div>
+          <div>จริง<br>พบเชื้อ</div>
+          <div class="n hit" id="cmTP">—</div>
+          <div class="n miss" id="cmFN">—</div>
+          <div>จริง<br>ไม่พบ</div>
+          <div class="n miss" id="cmFP">—</div>
+          <div class="n hit" id="cmTN">—</div>
+        </div>
+        <p class="tiny muted">แถว = ผลจริงจากการลอกเปลือก · คอลัมน์ = คำทำนายของโมเดล · ช่องสีสนิมคือที่ทำนายผิด (FN คือพลาด · FP คือแจ้งเตือนผิด)</p>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-h">แกลเลอรีที่ทำนายผิด <span class="push"></span><span class="mono" id="misCount"></span></div>
+      <div class="card-b">
+        <div class="gallery" id="gallery"></div>
+      </div>
+    </div>
+  </div>
+
+  <hr class="hr">
+
+  <section>
+    <div class="eye">ทำไมหน้านี้ออกแบบแบบนี้</div>
+    <ul class="tick">
+      <li><b>จุดตัดลากได้</b> ค่า sensitivity, specificity และ confusion matrix อัปเดตพร้อมกันทันที เพื่ออธิบายการแลกกันระหว่างการพลาดกับการแจ้งเตือนผิดต่อหน้ากรรมการได้สด ๆ</li>
+      <li><b>แท่ง baseline</b> เทียบ AUC ของฟีเจอร์เดี่ยวกับการรวมหลายฟีเจอร์ เป็นหลักฐานว่าทำไมต้องมีโมเดล</li>
+      <li><b>กลุ่ม hard negative</b> รายงานผลแยกไว้เด่นเท่ากับตัวเลขหลัก ไม่ซ่อนจุดอ่อน</li>
+      <li><b>แกลเลอรีที่ทำนายผิด</b> เปิดให้ดูตรง ๆ คลิกเข้าไปดูภาพจากด้านบนและภูมิประเทศ 3D พร้อมตัวเลขจริงได้ทุกหัว</li>
+    </ul>
+  </section>
+</main>
+
+<dialog id="dlg">
+  <div class="card-h">ตัวอย่างที่ทำนายผิด <span class="push"></span><span id="dlgId" class="mono"></span></div>
+  <div class="stage" style="border:none;border-radius:0">
+    <div class="view">
+      <canvas id="dlgCanvas"></canvas>
+      <div class="flat-view on" id="dlgFlat"></div>
+      <div class="hud"><span id="dlgMode">ภาพจากด้านบน</span><span id="dlgVal"></span></div>
+    </div>
+    <div class="stage-ctl">
+      <button id="dlgFlatBtn" aria-pressed="true">ภาพจากด้านบน</button>
+      <button id="dlg3dBtn" aria-pressed="false">ภูมิประเทศ 3D</button>
+      <button id="dlgPlane" class="push" aria-pressed="true" hidden>แสดงระนาบเกณฑ์</button>
+    </div>
+  </div>
+  <div class="card-b row">
+    <span class="tiny muted" id="dlgScale"></span>
+    <span class="tiny" id="dlgVerdict" style="margin-left:auto"></span>
+    <button class="ghost mono" id="dlgClose">ปิด</button>
+  </div>
+</dialog>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="/assets/data.js"></script>
+<script src="/assets/shell.js"></script>
+<script src="/assets/relief.js"></script>
+<script>
+(function(){
+  'use strict';
+  var OG=window.OG, Shell=window.Shell;
+  var $=function(id){return document.getElementById(id)};
+
+  /* ---------- ชุดข้อมูล ---------- */
+  var total=OG.TOTAL, train=Math.round(total*0.7), test=total-train;
+  $('hdTotal').textContent=total;
+  $('hdTrain').textContent=train;
+  $('hdTest').textContent=test;
+
+  var roc=OG.roc();
+  // hard negative = หัวปกติ (ไม่พบเชื้อ) ที่เรืองแสงหรี่ ใกล้เส้นจุดตัด จึงถูกแจ้งเตือนเกินง่าย
+  var hnSub=OG.labeled.filter(function(s){return s.truth!=='pos' && s.fp05<0.55});
+  var mis=OG.labeled.filter(function(s){return s.pred!==s.truth});
+  var cutVal=OG.THRESHOLD;
+
+  /* ---------- เรขาคณิตของกราฟ ---------- */
+  var RW=380, RH=340, PL=46, PR=16, PT=14, PB=40;
+  var pw=RW-PL-PR, ph=RH-PT-PB;
+  function sx(x){return PL + x*pw}
+  function sy(y){return PT + ph - y*ph}
+
+  var poly=roc.pts.map(function(p){return sx(p.x).toFixed(1)+','+sy(p.y).toFixed(1)}).join(' ');
+
+  function buildRoc(){
+    var g='';
+    // กรอบพื้นที่กราฟ
+    g+='<rect x="'+PL+'" y="'+PT+'" width="'+pw+'" height="'+ph+'" fill="#EDE7DA" stroke="#C4B8A2" stroke-width="1"/>';
+    // เส้นตาราง
+    [0.25,0.5,0.75].forEach(function(v){
+      g+='<line x1="'+sx(v)+'" y1="'+sy(0)+'" x2="'+sx(v)+'" y2="'+sy(1)+'" stroke="#C4B8A2" stroke-width="0.5"/>';
+      g+='<line x1="'+sx(0)+'" y1="'+sy(v)+'" x2="'+sx(1)+'" y2="'+sy(v)+'" stroke="#C4B8A2" stroke-width="0.5"/>';
+    });
+    // เส้นทแยงอ้างอิง 0.5
+    g+='<line x1="'+sx(0)+'" y1="'+sy(0)+'" x2="'+sx(1)+'" y2="'+sy(1)+'" stroke="#6E6355" stroke-width="1" stroke-dasharray="4 4"/>';
+    // เส้นโค้ง ROC (สี ink)
+    g+='<polyline points="'+poly+'" fill="none" stroke="#17130F" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>';
+    // ป้ายแกน
+    [0,0.5,1].forEach(function(v){
+      g+='<text x="'+sx(v)+'" y="'+(sy(0)+14)+'" text-anchor="middle" font-family="IBM Plex Mono,monospace" font-size="9" fill="#6E6355">'+v.toFixed(1)+'</text>';
+      g+='<text x="'+(sx(0)-6)+'" y="'+(sy(v)+3)+'" text-anchor="end" font-family="IBM Plex Mono,monospace" font-size="9" fill="#6E6355">'+v.toFixed(1)+'</text>';
+    });
+    g+='<text x="'+(PL+pw/2)+'" y="'+(RH-3)+'" text-anchor="middle" font-family="IBM Plex Mono,monospace" font-size="10" fill="#6E6355">อัตราบวกลวง (1 − Specificity)</text>';
+    g+='<text transform="translate(12,'+(PT+ph/2)+') rotate(-90)" text-anchor="middle" font-family="IBM Plex Mono,monospace" font-size="10" fill="#6E6355">ความไว (Sensitivity)</text>';
+    // คำอธิบายสัญลักษณ์ (มุมล่างขวา)
+    var lx=sx(0.50), ly=sy(0.34);
+    g+='<line x1="'+lx+'" y1="'+ly+'" x2="'+(lx+18)+'" y2="'+ly+'" stroke="#17130F" stroke-width="2"/>';
+    g+='<text x="'+(lx+24)+'" y="'+(ly+3)+'" font-family="IBM Plex Mono,monospace" font-size="9" fill="#6E6355">ROC · AUC '+roc.auc.toFixed(2)+'</text>';
+    g+='<line x1="'+lx+'" y1="'+(ly+16)+'" x2="'+(lx+18)+'" y2="'+(ly+16)+'" stroke="#6E6355" stroke-width="1" stroke-dasharray="4 4"/>';
+    g+='<text x="'+(lx+24)+'" y="'+(ly+19)+'" font-family="IBM Plex Mono,monospace" font-size="9" fill="#6E6355">เส้นอ้างอิง 0.5</text>';
+    g+='<circle cx="'+(lx+9)+'" cy="'+(ly+32)+'" r="4" fill="#A83A12"/>';
+    g+='<text x="'+(lx+24)+'" y="'+(ly+35)+'" font-family="IBM Plex Mono,monospace" font-size="9" fill="#6E6355">จุดตัดที่เลือก</text>';
+    // เส้นนำ + จุด marker (อัปเดตสด)
+    g+='<line id="gV" stroke="#A83A12" stroke-width="1" stroke-dasharray="3 3"/>';
+    g+='<line id="gH" stroke="#A83A12" stroke-width="1" stroke-dasharray="3 3"/>';
+    g+='<circle id="mkOut" r="8" fill="rgba(168,58,18,.20)"/>';
+    g+='<circle id="mkIn" r="4.5" fill="#A83A12" stroke="#EDE7DA" stroke-width="1.5"/>';
+    g+='<text id="mkTxt" font-family="IBM Plex Mono,monospace" font-size="9" fill="#A83A12" font-weight="500"></text>';
+    return '<svg id="rocSvg" viewBox="0 0 '+RW+' '+RH+'" style="display:block;width:100%;height:auto;touch-action:none;cursor:crosshair" role="img" aria-label="เส้นโค้ง ROC ลากจุดเพื่อเลือกจุดตัด">'+g+'</svg>';
+  }
+
+  /* ---------- กลุ่ม hard negative ---------- */
+  function hardNeg(cut){
+    var fp=0;
+    hnSub.forEach(function(s){ if(s.fp05<cut) fp++; });
+    var n=hnSub.length;
+    return { n:n, fp:fp, spec: n ? (n-fp)/n : 0 };
+  }
+
+  /* ---------- อัปเดตทุกอย่างตามจุดตัด ---------- */
+  function setCut(cut){
+    cut=Math.max(0.1, Math.min(0.9, cut));
+    cutVal=cut;
+    $('cutSlider').value=cut.toFixed(2);
+
+    var cm=OG.confusion(cut);
+
+    // ตัวเลขหลัก
+    $('mCut').textContent=cut.toFixed(2);
+    $('mSens').textContent=cm.sens.toFixed(2);
+    $('mSpec').textContent=cm.spec.toFixed(2);
+
+    // อ่านค่าใต้แถบเลื่อน
+    $('cutRead').textContent='จุดตัด = '+cut.toFixed(2)+' · ทำนายว่าพบเชื้อเมื่อ F_p05 < '+cut.toFixed(2);
+
+    // confusion matrix
+    $('cmCut').textContent='cut '+cut.toFixed(2);
+    $('cmTP').textContent=cm.tp;
+    $('cmFN').textContent=cm.fn;
+    $('cmFP').textContent=cm.fp;
+    $('cmTN').textContent=cm.tn;
+
+    // จุด marker บนเส้นโค้ง = จุดทำงานจริง (FPR, TPR)
+    var mx=sx(1-cm.spec), my=sy(cm.sens);
+    $('mkOut').setAttribute('cx',mx); $('mkOut').setAttribute('cy',my);
+    $('mkIn').setAttribute('cx',mx);  $('mkIn').setAttribute('cy',my);
+    var gV=$('gV'); gV.setAttribute('x1',mx); gV.setAttribute('y1',my); gV.setAttribute('x2',mx); gV.setAttribute('y2',sy(0));
+    var gH=$('gH'); gH.setAttribute('x1',sx(0)); gH.setAttribute('y1',my); gH.setAttribute('x2',mx); gH.setAttribute('y2',my);
+    var tx=$('mkTxt'), lblX=mx+10, anchor='start';
+    if(mx>RW-70){ lblX=mx-10; anchor='end'; }
+    tx.setAttribute('x',lblX); tx.setAttribute('y',my-8); tx.setAttribute('text-anchor',anchor);
+    tx.textContent=cut.toFixed(2);
+
+    // กลุ่ม hard negative
+    var hn=hardNeg(cut);
+    $('hnN').textContent=hn.n;
+    $('hnSpec').textContent=hn.spec.toFixed(2);
+    $('hnFp').textContent=hn.fp;
+    $('hnNote').textContent='Specificity ของทั้งชุดที่จุดตัดนี้ = '+cm.spec.toFixed(2)+
+      ' แต่บนกลุ่ม hard negative เหลือ '+hn.spec.toFixed(2)+
+      ' โมเดลแจ้งเตือนเกินกับหัวปกติที่เรืองแสงหรี่ '+hn.fp+' จาก '+hn.n+' หัว จึงรายงานแยกให้เห็นเด่นเท่ากับตัวเลขหลัก';
+  }
+
+  /* ---------- วาดกราฟ + ต่อสายควบคุม ---------- */
+  $('rocPlot').innerHTML=buildRoc();
+  $('cardAuc').textContent='AUC '+roc.auc.toFixed(2);
+  $('mAuc').textContent=roc.auc.toFixed(2);
+  $('aucModelTxt').textContent=roc.auc.toFixed(2);
+  $('barModel').style.width=(roc.auc*100).toFixed(0)+'%';
+  $('misCount').textContent=mis.length+' หัว';
+
+  var svg=$('rocSvg');
+  function clientToData(e){
+    if(!svg.getScreenCTM) return null;
+    var m=svg.getScreenCTM(); if(!m) return null;
+    var pt=svg.createSVGPoint(); pt.x=e.clientX; pt.y=e.clientY;
+    var loc=pt.matrixTransform(m.inverse());
+    return { x:(loc.x-PL)/pw, y:(PT+ph-loc.y)/ph };
+  }
+  function nearestCut(d){
+    var best=OG.THRESHOLD, bd=1e9;
+    roc.pts.forEach(function(p){
+      var dx=p.x-d.x, dy=p.y-d.y, dist=dx*dx+dy*dy;
+      if(dist<bd){ bd=dist; best=p.cut; }
+    });
+    return best;
+  }
+  var dragging=false;
+  function onPointer(e){ var d=clientToData(e); if(d) setCut(nearestCut(d)); }
+  svg.addEventListener('pointerdown',function(e){
+    dragging=true;
+    if(svg.setPointerCapture){ try{ svg.setPointerCapture(e.pointerId); }catch(x){} }
+    onPointer(e); e.preventDefault();
+  });
+  svg.addEventListener('pointermove',function(e){ if(dragging) onPointer(e); });
+  svg.addEventListener('pointerup',function(){ dragging=false; });
+  svg.addEventListener('pointercancel',function(){ dragging=false; });
+
+  $('cutSlider').addEventListener('input',function(){ setCut(parseFloat(this.value)); });
+
+  /* ---------- แกลเลอรีที่ทำนายผิด ---------- */
+  $('gallery').innerHTML=mis.map(function(s,i){
+    return '<figure data-i="'+i+'" role="button" tabindex="0" style="cursor:pointer" '+
+      'aria-label="เปิดตัวอย่าง '+s.id+' ที่ทำนายผิด">'+
+      Shell.disc(s,{size:112})+
+      '<figcaption>'+s.id+' · ทำนาย '+OG.LABEL_TH[s.pred]+' · จริง '+OG.LABEL_TH[s.truth]+'</figcaption>'+
+    '</figure>';
+  }).join('') || '<p class="tiny muted">ไม่มีตัวอย่างที่ทำนายผิดในชุดนี้</p>';
+
+  var gal=$('gallery');
+  gal.addEventListener('click',function(e){
+    var fig=e.target.closest('figure'); if(!fig) return;
+    openDlg(mis[+fig.dataset.i]);
+  });
+  gal.addEventListener('keydown',function(e){
+    if(e.key!=='Enter' && e.key!==' ') return;
+    var fig=e.target.closest('figure'); if(!fig) return;
+    e.preventDefault(); openDlg(mis[+fig.dataset.i]);
+  });
+
+  /* ---------- ไดอะล็อก: ภาพ + ภูมิประเทศ 3D ---------- */
+  var dlg=$('dlg'), dlgRelief=null, dlgMode='flat', dlgPlaneOn=true;
+
+  function dlgSetMode(m){
+    dlgMode=m; var is3d=m==='3d';
+    $('dlg3dBtn').setAttribute('aria-pressed',String(is3d));
+    $('dlgFlatBtn').setAttribute('aria-pressed',String(!is3d));
+    $('dlgPlane').hidden=!is3d;
+    $('dlgFlat').classList.toggle('on',!is3d);
+    $('dlgCanvas').style.display=is3d?'block':'none';
+    $('dlgMode').textContent=is3d?'ภูมิประเทศเรืองแสง':'ภาพจากด้านบน';
+    if(dlgRelief){
+      dlgRelief.enabled=is3d;
+      if(is3d) setTimeout(function(){ if(dlgRelief) dlgRelief.resize(); },60);
+    }
+  }
+
+  function openDlg(s){
+    if(!s) return;
+    dlg.showModal();
+    $('dlgId').textContent=s.id;
+    $('dlgFlat').innerHTML=Shell.disc(s,{size:300});
+    $('dlgVal').textContent='F_p05 = '+s.fp05.toFixed(2)+' · A_low = '+s.aLow.toFixed(1)+'%';
+    $('dlgScale').textContent='ตัวคูณความสูง ×'+window.OGRelief.HEIGHT_X.toFixed(1)+
+      ' · F_p05 '+s.fp05.toFixed(2)+' · A_low '+s.aLow.toFixed(1)+'% · blob_max '+s.blob+' px';
+    $('dlgVerdict').innerHTML='ทำนาย <span class="chip '+s.pred+'">'+OG.LABEL_TH[s.pred]+
+      '</span> · จริง <span class="chip '+s.truth+'">'+OG.LABEL_TH[s.truth]+'</span>';
+    dlgPlaneOn=true;
+    $('dlgPlane').setAttribute('aria-pressed','true');
+    $('dlgPlane').textContent='แสดงระนาบเกณฑ์';
+    if(dlgRelief){ dlgRelief.dispose(); dlgRelief=null; }
+    dlgRelief=window.OGRelief.create({canvas:$('dlgCanvas'),sample:s,plane:true,enabled:false});
+    dlgSetMode('flat');
+  }
+
+  $('dlgFlatBtn').addEventListener('click',function(){ dlgSetMode('flat'); });
+  $('dlg3dBtn').addEventListener('click',function(){ dlgSetMode('3d'); });
+  $('dlgPlane').addEventListener('click',function(){
+    dlgPlaneOn=!dlgPlaneOn;
+    if(dlgRelief) dlgRelief.setPlane(dlgPlaneOn);
+    this.setAttribute('aria-pressed',String(dlgPlaneOn));
+    this.textContent=dlgPlaneOn?'แสดงระนาบเกณฑ์':'ซ่อนระนาบเกณฑ์';
+  });
+  $('dlgClose').addEventListener('click',function(){ dlg.close(); });
+  dlg.addEventListener('close',function(){ if(dlgRelief){ dlgRelief.dispose(); dlgRelief=null; } });
+
+  /* ---------- เริ่มต้นที่จุดตัดมาตรฐาน ---------- */
+  setCut(OG.THRESHOLD);
+})();
+</script>
+</body>
+</html>

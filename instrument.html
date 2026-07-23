@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ห้องเครื่อง · OnionGuard</title>
+<meta name="description" content="OnionGuard — กล่องถ่ายภาพสามมิติและเรขาคณิตของแสง">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Anuphan:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Thai:wght@300;400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/assets/style.css">
+</head>
+<body>
+
+<main class="page">
+  <div class="phead">
+    <span class="route">/instrument</span>
+    <h1>ห้องเครื่อง</h1>
+    <p class="sub">หน้าเดียวที่สามมิติเป็นเนื้อหาหลัก กล่องผ่าครึ่งหมุนดูได้ ใช้อธิบายเรขาคณิตของแสงซึ่งเป็นตัวชี้ขาดคุณภาพสัญญาณเมื่อถ่ายมุมเดียว</p>
+  </div>
+
+  <div class="model-grid">
+
+    <!-- ซ้าย: เวทีสามมิติ -->
+    <div class="stack">
+      <div class="stage">
+        <div class="view" id="view">
+          <canvas id="chamber" aria-label="กล่องถ่ายภาพสามมิติแบบผ่าครึ่ง ลากเพื่อหมุน ล้อเลื่อนเพื่อซูม"></canvas>
+          <div class="hud">
+            <span>กล่องถ่ายภาพ · ผ่าครึ่ง</span>
+            <span>ลากหมุน · ล้อเลื่อนซูม</span>
+          </div>
+        </div>
+      </div>
+      <div class="stage-foot">
+        <span>ลำแสง UV เอียง 30–45° เยื้องจากแนวเลนส์</span>
+        <span>ลากเพื่อหมุน · ล้อเลื่อนเพื่อซูม</span>
+      </div>
+    </div>
+
+    <!-- ขวา: รายการส่วนประกอบ -->
+    <div class="stack">
+      <div class="card">
+        <div class="card-h">ส่วนประกอบในกล่อง<span class="push"></span>แตะเพื่อซ่อน/แสดง</div>
+        <div class="card-b">
+          <div class="toggle-list" id="toggles">
+            <button data-part="camera" aria-pressed="true">
+              <span class="led"></span>
+              <span style="display:flex;flex-direction:column;gap:1px;line-height:1.35">
+                <b style="font-family:'Anuphan',sans-serif;font-weight:600">กล้อง</b>
+                <span style="font-size:.72rem;color:var(--muted)">เลนส์เดียวจากด้านบน เก็บภาพทั้งหัว</span>
+              </span>
+            </button>
+            <button data-part="shroud" aria-pressed="true">
+              <span class="led"></span>
+              <span style="display:flex;flex-direction:column;gap:1px;line-height:1.35">
+                <b style="font-family:'Anuphan',sans-serif;font-weight:600">ปลอกกันแสง</b>
+                <span style="font-size:.72rem;color:var(--muted)">กันแสงรอบข้างไม่ให้รบกวนเฟรม</span>
+              </span>
+            </button>
+            <button data-part="filter" aria-pressed="true">
+              <span class="led"></span>
+              <span style="display:flex;flex-direction:column;gap:1px;line-height:1.35">
+                <b style="font-family:'Anuphan',sans-serif;font-weight:600">ฟิลเตอร์เหลือง</b>
+                <span style="font-size:.72rem;color:var(--muted)">ตัดแสงกระตุ้น เหลือเฉพาะสัญญาณเรืองแสง</span>
+              </span>
+            </button>
+            <button data-part="uv" aria-pressed="true">
+              <span class="led"></span>
+              <span style="display:flex;flex-direction:column;gap:1px;line-height:1.35">
+                <b style="font-family:'Anuphan',sans-serif;font-weight:600">แผง UV เอียง</b>
+                <span style="font-size:.72rem;color:var(--muted)">ยิงแสงกระตุ้นเฉียง ไม่ย้อนเข้าเลนส์</span>
+              </span>
+            </button>
+            <button data-part="jig" aria-pressed="true">
+              <span class="led"></span>
+              <span style="display:flex;flex-direction:column;gap:1px;line-height:1.35">
+                <b style="font-family:'Anuphan',sans-serif;font-weight:600">จิ๊กบังคับท่า</b>
+                <span style="font-size:.72rem;color:var(--muted)">บังคับหัวหอมให้คอหงายตรงกลางเสมอ</span>
+              </span>
+            </button>
+            <button data-part="plate" aria-pressed="true">
+              <span class="led"></span>
+              <span style="display:flex;flex-direction:column;gap:1px;line-height:1.35">
+                <b style="font-family:'Anuphan',sans-serif;font-weight:600">แผ่นอ้างอิง</b>
+                <span style="font-size:.72rem;color:var(--muted)">อ้างอิงสีและความสว่างของทุกเฟรม</span>
+              </span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h4 class="lbl">อ่านเรขาคณิตของแสง</h4>
+        <p class="tiny muted" style="margin:0">เลนส์มองตรงลงจากด้านบน แผง UV ตั้งเยื้องออกไปด้านข้าง ลำแสงจึงตกกระทบเฉียง 30–45° ไม่สะท้อนย้อนเข้าเลนส์ ซึ่งเป็นเงื่อนไขที่ทำให้จับการเรืองแสงจาง ๆ ได้</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="note" style="margin-top:22px">
+    <b>จิ๊กบังคับท่า · ออกแบบให้วางผิดท่าไม่ได้</b>
+    <p>ถ่ายมุมเดียว วางผิด = ไม่มีมุมอื่นมาชดเชย จึงต้องบังคับท่าตั้งแต่ฮาร์ดแวร์</p>
+  </div>
+
+  <div class="g2" style="margin-top:18px">
+    <div>
+      <div class="eye">ทำไมตำแหน่งไฟจึงชี้ขาด</div>
+      <ul class="tick">
+        <li><b>ถ่ายมุมเดียว</b> ไม่มีเฟรมจากมุมอื่นมาเฉลี่ยเงาหรือจุดสะท้อน ตำแหน่งไฟจึงกำหนดคุณภาพสัญญาณเกือบทั้งหมด</li>
+        <li><b>แสงตกเฉียง 30–45°</b> ทำให้แสงกระตุ้นไม่ย้อนเข้าเลนส์ ลด hotspot ที่กลบการเรืองแสงจาง</li>
+        <li><b>ปลอกกันแสงและฟิลเตอร์เหลือง</b> คัดเฉพาะช่วงคลื่นเรืองแสง ค่าที่วัดจึงเทียบกันได้ระหว่างหัว</li>
+        <li><b>ท่าคงที่จากจิ๊ก</b> ระยะและมุมตกกระทบเท่ากันทุกหัว ตัวเลขที่ได้จึงเปรียบเทียบกันตรง ๆ</li>
+      </ul>
+    </div>
+    <div class="note dead">
+      <b>ถ้าเวลาไม่พอ</b>
+      <p>เรนเดอร์ภาพนิ่งสามมุมไว้ล่วงหน้าแล้วใช้แทน ได้ผลใกล้เคียงกันในการนำเสนอ และไม่ควรเริ่มหน้านี้ก่อนที่หน้าลำดับหนึ่งจะเสร็จ</p>
+    </div>
+  </div>
+</main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="/assets/data.js"></script>
+<script src="/assets/shell.js"></script>
+<script>
+(function(){
+  'use strict';
+  var root = window;
+  var canvas = document.getElementById('chamber');
+  var view = document.getElementById('view');
+
+  /* ป้องกันกรณีไม่มี WebGL / โหลด THREE ไม่สำเร็จ — แสดงข้อความแทนผืนผ้าใบว่าง */
+  if (!root.THREE || !canvas) {
+    if (view) {
+      view.innerHTML = '<div style="height:100%;display:flex;align-items:center;justify-content:center;' +
+        'padding:22px;text-align:center;color:#8D8577;font-family:\'IBM Plex Mono\',monospace;' +
+        'font-size:.72rem;letter-spacing:.1em;line-height:1.9">' +
+        'เบราว์เซอร์นี้ยังไม่พร้อมแสดงภาพสามมิติ<br>ใช้ภาพนิ่งสามมุมที่เรนเดอร์ไว้ล่วงหน้าแทนได้</div>';
+    }
+    return;
+  }
+
+  var reduce = root.matchMedia && root.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  /* -------- ตัวเรนเดอร์ -------- */
+  var W = canvas.clientWidth || 800, H = canvas.clientHeight || 400;
+  var renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true });
+  renderer.setPixelRatio(Math.min(root.devicePixelRatio || 1, 2));
+  renderer.setSize(W, H, false);
+  renderer.setClearColor(0x14120F, 1);
+
+  var scene = new THREE.Scene();
+  var camera = new THREE.PerspectiveCamera(32, W / H, 0.1, 100);
+  var group = new THREE.Group();
+  scene.add(group);
+
+  /* -------- ตัวช่วยสร้างวัสดุแบบแบน (ไม่มี gradient) -------- */
+  function lam(color, opts) {
+    opts = opts || {};
+    return new THREE.MeshLambertMaterial({
+      color: color,
+      emissive: opts.emissive !== undefined ? opts.emissive : 0x000000,
+      emissiveIntensity: opts.ei !== undefined ? opts.ei : 1,
+      transparent: !!opts.transparent,
+      opacity: opts.opacity !== undefined ? opts.opacity : 1,
+      side: opts.side || THREE.FrontSide,
+      flatShading: true
+    });
+  }
+
+  var SPEC = new THREE.Vector3(0, 0.5, 0);   // ตำแหน่งตัวอย่างกลางกล่อง
+
+  /* -------- โครงกล่องผ่าครึ่ง (คงอยู่ตลอด ไม่ใช่ปุ่มสลับ) -------- */
+  var wallMat = lam(0x3A342C);
+  var floorMat = lam(0x2A251E);
+  var railMat = lam(0x4A4237);
+
+  var floor = new THREE.Mesh(new THREE.BoxGeometry(4, 0.1, 4), floorMat);
+  floor.position.set(0, -0.05, 0); group.add(floor);
+
+  var back = new THREE.Mesh(new THREE.BoxGeometry(4, 3, 0.1), wallMat);
+  back.position.set(0, 1.5, -2); group.add(back);            // ผนังหลัง
+
+  var leftW = new THREE.Mesh(new THREE.BoxGeometry(0.1, 3, 4), wallMat);
+  leftW.position.set(-2, 1.5, 0); group.add(leftW);          // ผนังซ้าย
+
+  var topPlate = new THREE.Mesh(new THREE.BoxGeometry(4, 0.1, 2), wallMat);
+  topPlate.position.set(0, 3, -1); group.add(topPlate);      // ฝาบนครึ่งหลัง (ผ่าครึ่ง)
+
+  var rail = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.16, 4), railMat);
+  rail.position.set(0, 2.92, 0); group.add(rail);            // รางแขวนกล้อง
+  /* ผนังหน้า (z=+2) และผนังขวา (x=+2) ถูกตัดออก — เห็นภายในกล่อง */
+
+  /* -------- กล้องถ่ายภาพ: ทรงกระบอกชี้ตรงลง + เลนส์ -------- */
+  var camGroup = new THREE.Group(); group.add(camGroup);
+  var camBodyMat = lam(0x6E6355);
+  var body = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 0.55, 24), camBodyMat);
+  body.position.set(0, 2.55, 0); camGroup.add(body);
+  var lens = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.14, 0.22, 24), camBodyMat);
+  lens.position.set(0, 2.22, 0); camGroup.add(lens);
+  var glass = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 0.02, 24), lam(0x14120F));
+  glass.position.set(0, 2.10, 0); camGroup.add(glass);
+
+  /* -------- ปลอกกันแสง: ท่อกลวงรอบเลนส์ -------- */
+  var shroudGroup = new THREE.Group(); group.add(shroudGroup);
+  var shroudMat = lam(0x4A4237, { side: THREE.DoubleSide });
+  var shroud = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.34, 0.62, 24, 1, true), shroudMat);
+  shroud.position.set(0, 2.13, 0); shroudGroup.add(shroud);
+
+  /* -------- ฟิลเตอร์เหลือง: แผ่นบางโปร่งแสง สีเดียว ไม่มี gradient -------- */
+  var filterGroup = new THREE.Group(); group.add(filterGroup);
+  var filterMat = lam(0xB5821A, { transparent: true, opacity: 0.35, side: THREE.DoubleSide });
+  var filter = new THREE.Mesh(new THREE.CylinderGeometry(0.26, 0.26, 0.02, 28), filterMat);
+  filter.position.set(0, 1.92, 0); filterGroup.add(filter);
+
+  /* -------- แผง UV เอียง + ลำแสงตรงทึบ -------- */
+  var uvGroup = new THREE.Group(); group.add(uvGroup);
+  var panelPos = new THREE.Vector3(1.35, 2.0, 0.15);
+  var frameMat = lam(0x37502C);
+  var faceMat = lam(0x6E7F28, { emissive: 0x3D4A12, ei: 0.5 });
+
+  var panel = new THREE.Group();
+  panel.position.copy(panelPos);
+  var frame = new THREE.Mesh(new THREE.BoxGeometry(0.95, 0.62, 0.08), frameMat);
+  panel.add(frame);
+  var face = new THREE.Mesh(new THREE.BoxGeometry(0.78, 0.46, 0.05), faceMat);
+  face.position.z = 0.05; panel.add(face);
+  panel.lookAt(SPEC);           // +Z ของแผงหันเข้าหาตัวอย่าง
+  uvGroup.add(panel);
+
+  var beamDir = SPEC.clone().sub(panelPos);          // ทิศจากแผงไปตัวอย่าง
+  var beamLen = beamDir.length();
+  var beamMat = lam(0xC7D93A, { emissive: 0x9AA82C, ei: 0.8 });
+  var beam = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, beamLen, 12), beamMat);
+  beam.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), beamDir.clone().normalize());
+  beam.position.copy(panelPos).add(SPEC).multiplyScalar(0.5);   // จุดกึ่งกลางลำแสง
+  uvGroup.add(beam);
+
+  /* -------- จิ๊กบังคับท่า: เบ้ารองรับหัวหอม -------- */
+  var jigGroup = new THREE.Group(); group.add(jigGroup);
+  var jigMat = lam(0xA83A12);
+  var jigBaseMat = lam(0x3A342C);
+  var jigBase = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 0.7, 0.12, 32), jigBaseMat);
+  jigBase.position.set(0, 0.06, 0); jigGroup.add(jigBase);
+  var cradle = new THREE.Mesh(new THREE.TorusGeometry(0.42, 0.09, 12, 32), jigMat);
+  cradle.rotation.x = Math.PI / 2; cradle.position.set(0, 0.22, 0); jigGroup.add(cradle);
+  var pi;
+  for (pi = 0; pi < 3; pi++) {
+    var a = pi / 3 * Math.PI * 2;
+    var post = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.3, 0.06), jigMat);
+    post.position.set(Math.cos(a) * 0.4, 0.28, Math.sin(a) * 0.4);
+    post.rotation.z = Math.cos(a) * 0.22;
+    post.rotation.x = -Math.sin(a) * 0.22;
+    jigGroup.add(post);
+  }
+
+  /* -------- ตัวอย่าง: หัวหอมทรงแบน คอหงายขึ้น (คงอยู่ตลอด) -------- */
+  var onion = new THREE.Mesh(new THREE.SphereGeometry(0.46, 32, 24),
+    lam(0x8A9A2C, { emissive: 0x54611F, ei: 0.45 }));   // เรืองแสงโอลีฟจาง ๆ (อนุญาตในเวที)
+  onion.scale.set(1, 0.82, 1); onion.position.copy(SPEC); group.add(onion);
+  var neck = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.11, 0.22, 16), lam(0x6E6A3A));
+  neck.position.set(0, 0.9, 0); group.add(neck);
+
+  /* -------- แผ่นอ้างอิง: การ์ดแบนข้างตัวอย่าง -------- */
+  var plateGroup = new THREE.Group(); group.add(plateGroup);
+  var plateMat = lam(0xEDE7DA);
+  var plate = new THREE.Mesh(new THREE.BoxGeometry(0.66, 0.03, 0.44), plateMat);
+  plate.position.set(-1.05, 0.04, 1.0); plateGroup.add(plate);
+  var patchCols = [0x2A251E, 0x6E6355, 0xB5821A];
+  var qi;
+  for (qi = 0; qi < 3; qi++) {
+    var patch = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.02, 0.14), lam(patchCols[qi]));
+    patch.position.set(-1.05 + (qi - 1) * 0.17, 0.06, 1.0);
+    plateGroup.add(patch);
+  }
+
+  /* -------- แสง: มีทิศ + แวดล้อม ไม่มี gradient texture -------- */
+  var key = new THREE.DirectionalLight(0xffffff, 0.95);
+  key.position.set(3.5, 5, 3.5); scene.add(key);
+  var fill = new THREE.DirectionalLight(0xffffff, 0.3);
+  fill.position.set(-3, 2.5, -2); scene.add(fill);
+  scene.add(new THREE.AmbientLight(0xffffff, 0.5));
+
+  /* -------- ทะเบียนชิ้นส่วนสำหรับปุ่มสลับ + ไฮไลต์ -------- */
+  function reg(obj, mats) {
+    return {
+      obj: obj,
+      entries: mats.map(function (m) {
+        return { m: m, e: m.emissive.getHex(), i: (m.emissiveIntensity === undefined ? 1 : m.emissiveIntensity) };
+      }),
+      hl: 0
+    };
+  }
+  var targets = {
+    camera: reg(camGroup, [camBodyMat]),
+    shroud: reg(shroudGroup, [shroudMat]),
+    filter: reg(filterGroup, [filterMat]),
+    uv: reg(uvGroup, [frameMat, faceMat, beamMat]),
+    jig: reg(jigGroup, [jigMat, jigBaseMat]),
+    plate: reg(plateGroup, [plateMat])
+  };
+
+  function highlight(t) {
+    t.hl = 1;
+    t.entries.forEach(function (en) {
+      en.m.emissive.setHex(0xC7D93A);
+      en.m.emissiveIntensity = en.i + 0.9;
+    });
+  }
+
+  /* -------- ปุ่มสลับการมองเห็นชิ้นส่วน -------- */
+  var btns = document.querySelectorAll('#toggles button');
+  [].forEach.call(btns, function (btn) {
+    btn.addEventListener('click', function () {
+      var t = targets[btn.dataset.part];
+      if (!t) return;
+      var on = btn.getAttribute('aria-pressed') !== 'true';
+      btn.setAttribute('aria-pressed', String(on));
+      t.obj.visible = on;
+      if (on) highlight(t);
+    });
+  });
+
+  /* -------- กล้องวงโคจร: มุมกวาด/มุมเงย + ระยะ (ซูมด้วยล้อ) -------- */
+  var CENTER = new THREE.Vector3(0, 1.1, 0);
+  var az = 0.72, el = 0.52, dist = 8.4;
+  var tAz = az, tEl = el, tDist = dist;
+
+  function place() {
+    camera.position.set(
+      CENTER.x + Math.sin(az) * Math.cos(el) * dist,
+      CENTER.y + Math.sin(el) * dist,
+      CENTER.z + Math.cos(az) * Math.cos(el) * dist
+    );
+    camera.lookAt(CENTER);
+  }
+
+  var drag = false, px = 0, py = 0;
+  function down(x, y) { drag = true; px = x; py = y; }
+  function move(x, y) {
+    if (!drag) return;
+    tAz -= (x - px) * 0.008;
+    tEl = Math.max(0.1, Math.min(1.2, tEl + (y - py) * 0.006));
+    px = x; py = y;
+  }
+  function up() { drag = false; }
+
+  canvas.addEventListener('mousedown', function (e) { down(e.clientX, e.clientY); });
+  root.addEventListener('mousemove', function (e) { move(e.clientX, e.clientY); });
+  root.addEventListener('mouseup', up);
+  canvas.addEventListener('touchstart', function (e) { var t = e.touches[0]; down(t.clientX, t.clientY); }, { passive: true });
+  canvas.addEventListener('touchmove', function (e) { var t = e.touches[0]; move(t.clientX, t.clientY); e.preventDefault(); }, { passive: false });
+  canvas.addEventListener('touchend', up);
+
+  /* ซูมด้วยล้อเลื่อน — ปรับระยะกล้องแล้วจำกัดช่วง */
+  canvas.addEventListener('wheel', function (e) {
+    e.preventDefault();
+    tDist = Math.max(4.8, Math.min(14, tDist + e.deltaY * 0.01));
+  }, { passive: false });
+
+  function resize() {
+    var w = canvas.clientWidth, h = canvas.clientHeight;
+    if (!w || !h) return;
+    renderer.setSize(w, h, false);
+    camera.aspect = w / h;
+    camera.updateProjectionMatrix();
+  }
+  root.addEventListener('resize', resize);
+
+  /* -------- ประตูควบคุมการมองเห็น: เรนเดอร์เฉพาะตอนอยู่ในจอ -------- */
+  var visible = true;
+  if ('IntersectionObserver' in root) {
+    new IntersectionObserver(function (es) { visible = es[0].isIntersecting; }, { threshold: 0.03 }).observe(canvas);
+  }
+
+  function decayHighlights() {
+    Object.keys(targets).forEach(function (k) {
+      var t = targets[k];
+      if (t.hl <= 0) return;
+      t.hl *= 0.9;
+      if (t.hl < 0.03) {
+        t.hl = 0;
+        t.entries.forEach(function (en) { en.m.emissive.setHex(en.e); en.m.emissiveIntensity = en.i; });
+      } else {
+        t.entries.forEach(function (en) { en.m.emissiveIntensity = en.i + t.hl * 0.9; });
+      }
+    });
+  }
+
+  function loop() {
+    requestAnimationFrame(loop);
+    if (!visible) return;
+    var k = reduce ? 1 : 0.12;      // เคารพ prefers-reduced-motion: ข้ามการหน่วง
+    az += (tAz - az) * k;
+    el += (tEl - el) * k;
+    dist += (tDist - dist) * k;
+    decayHighlights();
+    place();
+    renderer.render(scene, camera);
+  }
+
+  resize(); place(); loop();
+})();
+</script>
+</body>
+</html>

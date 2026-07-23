@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>รายการตัวอย่าง · OnionGuard</title>
+<meta name="description" content="OnionGuard — รายการตัวอย่างทุกหัวที่สแกน">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Anuphan:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Thai:wght@300;400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/assets/style.css">
+</head>
+<body>
+
+<main class="page">
+  <div class="phead">
+    <span class="route">/samples</span>
+    <h1>รายการตัวอย่าง</h1>
+    <p class="sub">งานหลักคือเทียบตัวเลขระหว่างหัวและหาความผิดปกติ จึงใช้ตารางเป็นแกนหลัก ไม่ใช่แกลเลอรี</p>
+  </div>
+
+  <!-- แถบกรอง -->
+  <div class="card">
+    <div class="card-b row" style="gap:10px 16px">
+      <label style="display:inline-flex;align-items:center;gap:8px">
+        <span class="mono tiny muted" style="text-transform:uppercase;letter-spacing:.12em">ค้นหา</span>
+        <input type="search" id="q" placeholder="M-0…" size="8"
+               style="width:118px;font-family:'IBM Plex Mono',monospace;letter-spacing:.06em"
+               aria-label="ค้นหาด้วยรหัสตัวอย่าง">
+      </label>
+
+      <label style="display:inline-flex;align-items:center;gap:8px">
+        <span class="mono tiny muted" style="text-transform:uppercase;letter-spacing:.12em">กลุ่ม</span>
+        <select id="fGroup" aria-label="กรองตามกลุ่มที่มา"></select>
+      </label>
+
+      <label style="display:inline-flex;align-items:center;gap:8px">
+        <span class="mono tiny muted" style="text-transform:uppercase;letter-spacing:.12em">ผลจริง</span>
+        <select id="fTruth" aria-label="กรองตามผลลอกเปลือก"></select>
+      </label>
+
+      <span class="push"></span>
+
+      <button id="fMiss" aria-pressed="false" title="แสดงเฉพาะหัวที่โมเดลทำนายไม่ตรงกับผลจริง">เฉพาะที่พลาด</button>
+    </div>
+
+    <!-- ตารางเปรียบเทียบ -->
+    <div class="tbl-scroll" style="border-top:1px solid var(--ink)">
+      <table class="t">
+        <thead>
+          <tr>
+            <th>ภาพ</th>
+            <th>รหัส</th>
+            <th style="text-align:right">F_p05</th>
+            <th style="text-align:right">A_low</th>
+            <th style="text-align:right">blob</th>
+            <th>ทำนาย</th>
+            <th>จริง</th>
+            <th>สถานะ</th>
+          </tr>
+        </thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
+
+    <div class="card-b row" style="border-top:1px solid var(--rule)">
+      <span class="tiny muted" id="count">แสดง — จาก 247</span>
+      <button class="ghost mono" style="margin-left:auto" id="csv">ส่งออก CSV</button>
+    </div>
+  </div>
+
+  <hr class="hr">
+
+  <section>
+    <div class="eye">ทำไมหน้านี้เป็นตาราง ไม่ใช่แกลเลอรี</div>
+    <ul class="tick">
+      <li>หนึ่งหัวมีภาพเดียวจากมุมเดียว ไม่มีอะไรให้เทียบภายในหัว คุณค่าจริงอยู่ที่การ<b>เทียบตัวเลขระหว่างหัว</b> ตารางที่เรียงค่าได้จึงเป็นแกนหลัก</li>
+      <li>งานที่ทำบ่อยที่สุดคือหาหัวที่โมเดลทำนายพลาด จึงยกปุ่ม <b>เฉพาะที่พลาด</b> ออกมาเป็นปุ่มเดียวที่กดง่าย ไม่ซ่อนในเมนู</li>
+      <li>ภาพย่อในแต่ละแถวเล็กแต่พอเห็นตำแหน่งจุดผิดปกติ กดที่แถวเพื่อ<b>ขยายและเปิดภูมิประเทศ 3D</b> ส่วนปุ่ม <b>ส่งออก CSV</b> ไว้ดึงตารางที่กรองแล้วไปแนบภาคผนวกรายงาน</li>
+    </ul>
+  </section>
+</main>
+
+<dialog id="dlg">
+  <div class="card-h">ตัวอย่าง<span class="push"></span><span id="dlgId" class="mono"></span></div>
+
+  <div class="stage" style="border:none;border-radius:0">
+    <div class="view">
+      <canvas id="dlgCanvas" aria-label="ภูมิประเทศเรืองแสงสามมิติ ลากเพื่อหมุน"></canvas>
+      <div class="flat-view on" id="dlgFlat"></div>
+      <div class="hud"><span id="dlgMode">ภาพจากด้านบน</span><span id="dlgVal"></span></div>
+    </div>
+    <div class="stage-ctl">
+      <button id="dlgFlatBtn" aria-pressed="true">ภาพจากด้านบน</button>
+      <button id="dlg3dBtn" aria-pressed="false">ภูมิประเทศ 3D</button>
+    </div>
+  </div>
+
+  <div class="card-b stack">
+    <div class="metrics" style="grid-template-columns:1fr 1fr 1fr">
+      <div><span class="k">F_p05</span><span class="v" id="dlgF">—</span></div>
+      <div><span class="k">A_low</span><span class="v" id="dlgA">—</span></div>
+      <div><span class="k">blob_max</span><span class="v" id="dlgB">—</span></div>
+    </div>
+    <div class="row">
+      <span class="tiny muted" id="dlgScale"></span>
+      <button class="ghost mono" style="margin-left:auto" id="dlgClose">ปิด</button>
+    </div>
+  </div>
+</dialog>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="/assets/data.js"></script>
+<script src="/assets/shell.js"></script>
+<script src="/assets/relief.js"></script>
+<script>
+(function(){
+  'use strict';
+  var OG=window.OG, Shell=window.Shell;
+  var $=function(id){return document.getElementById(id)};
+
+  /* -------- เติมตัวเลือกในแถบกรอง -------- */
+  var fGroup=$('fGroup'), fTruth=$('fTruth');
+  fGroup.innerHTML='<option value="">ทั้งหมด</option>'+
+    OG.GROUPS.map(function(g){return '<option value="'+g+'">'+g+'</option>'}).join('');
+  fTruth.innerHTML='<option value="">ทั้งหมด</option>'+
+    ['clear','susp','pos'].map(function(t){return '<option value="'+t+'">'+OG.LABEL_TH[t]+'</option>'}).join('');
+
+  var missOnly=false;
+
+  /* -------- คัดกรองแถว (ทำงานบนหัวที่กรอกผลจริงแล้วเท่านั้น) -------- */
+  function filtered(){
+    var q=$('q').value.trim().toUpperCase();
+    var g=fGroup.value, t=fTruth.value;
+    return OG.labeled.filter(function(s){
+      if(q && s.id.indexOf(q)<0) return false;
+      if(g && s.group!==g) return false;
+      if(t && s.truth!==t) return false;
+      if(missOnly && s.pred===s.truth) return false;
+      return true;
+    });
+  }
+
+  /* -------- วาดตาราง -------- */
+  function render(){
+    var rows=filtered();
+    var tb=$('rows');
+    if(!rows.length){
+      tb.innerHTML='<tr><td colspan="8" class="muted">ไม่มีตัวอย่างที่ตรงกับเงื่อนไข</td></tr>';
+    }else{
+      tb.innerHTML=rows.map(function(s){
+        var ok=s.pred===s.truth;
+        return '<tr data-id="'+s.id+'" style="cursor:pointer">'+
+          '<td><span class="thumb" style="display:inline-block;overflow:hidden">'+
+            Shell.disc(s,{size:44,roi:false})+'</span></td>'+
+          '<td><b>'+s.id+'</b></td>'+
+          '<td class="num">'+s.fp05.toFixed(2)+'</td>'+
+          '<td class="num">'+s.aLow.toFixed(1)+'%</td>'+
+          '<td class="num">'+s.blob+'</td>'+
+          '<td><span class="chip '+s.pred+'">'+OG.LABEL_TH[s.pred]+'</span></td>'+
+          '<td><span class="chip '+s.truth+'">'+OG.LABEL_TH[s.truth]+'</span></td>'+
+          '<td class="'+(ok?'':'miss')+'">'+(ok?'✓':'✗ พลาด')+'</td>'+
+        '</tr>';
+      }).join('');
+    }
+    $('count').innerHTML='แสดง <b>'+rows.length+'</b> จาก '+OG.TOTAL;
+  }
+
+  $('q').addEventListener('input',render);
+  fGroup.addEventListener('change',render);
+  fTruth.addEventListener('change',render);
+  $('fMiss').addEventListener('click',function(){
+    missOnly=!missOnly;
+    this.setAttribute('aria-pressed',String(missOnly));
+    render();
+  });
+
+  /* -------- ส่งออก CSV จากแถวที่กรองแล้ว -------- */
+  function csvCell(v){
+    v=String(v);
+    return /[",\n]/.test(v) ? '"'+v.replace(/"/g,'""')+'"' : v;
+  }
+  $('csv').addEventListener('click',function(){
+    var rows=filtered();
+    var head=['id','group','fp05','aLow','blob','pred','truth','status'];
+    var lines=[head.join(',')];
+    rows.forEach(function(s){
+      lines.push([
+        s.id, s.group, s.fp05.toFixed(2), s.aLow.toFixed(1), s.blob,
+        s.pred, s.truth, (s.pred===s.truth?'ok':'miss')
+      ].map(csvCell).join(','));
+    });
+    var blob=new Blob(['﻿'+lines.join('\r\n')],{type:'text/csv;charset=utf-8;'});
+    var url=URL.createObjectURL(blob);
+    var a=document.createElement('a');
+    a.href=url;
+    a.download='onionguard-samples.csv';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  });
+
+  /* -------- ไดอะล็อก: ภาพขยาย + สลับไป 3D -------- */
+  var dlg=$('dlg'), dlgFlat=$('dlgFlat'), dlgCanvas=$('dlgCanvas');
+  var relief=null, mode='flat', cur=null;
+
+  function setMode(m){
+    mode=m;
+    var is3d=m==='3d';
+    dlg3dBtn.setAttribute('aria-pressed',String(is3d));
+    dlgFlatBtn.setAttribute('aria-pressed',String(!is3d));
+    dlgFlat.classList.toggle('on',!is3d);
+    dlgCanvas.style.display=is3d?'block':'none';
+    $('dlgMode').textContent=is3d?'ภูมิประเทศเรืองแสง':'ภาพจากด้านบน';
+    if(is3d){
+      if(!relief && cur){
+        relief=window.OGRelief.create({canvas:dlgCanvas,sample:cur,plane:true,enabled:true});
+      }else if(relief){
+        relief.enabled=true;
+      }
+      setTimeout(function(){if(relief) relief.resize()},60);
+    }else if(relief){
+      relief.enabled=false;
+    }
+  }
+
+  var dlgFlatBtn=$('dlgFlatBtn'), dlg3dBtn=$('dlg3dBtn');
+  dlgFlatBtn.addEventListener('click',function(){setMode('flat')});
+  dlg3dBtn.addEventListener('click',function(){setMode('3d')});
+
+  function openSample(s){
+    cur=s;
+    if(relief){relief.dispose(); relief=null;}
+    $('dlgId').textContent=s.id+' · '+s.group;
+    dlgFlat.innerHTML=Shell.disc(s,{size:320});
+    $('dlgF').textContent=s.fp05.toFixed(2);
+    $('dlgA').innerHTML=s.aLow.toFixed(1)+' <small>%</small>';
+    $('dlgB').innerHTML=s.blob+' <small>px</small>';
+    $('dlgVal').textContent='F_p05 = '+s.fp05.toFixed(2)+' · A_low = '+s.aLow.toFixed(1)+'%';
+    $('dlgScale').textContent='ตัวคูณความสูง ×'+window.OGRelief.HEIGHT_X.toFixed(1)+
+      ' (ขยายเพื่อให้มองเห็น) · ค่าจริง F_p05 '+s.fp05.toFixed(2)+
+      ' · A_low '+s.aLow.toFixed(1)+'% · blob_max '+s.blob+' px';
+    setMode('flat');
+    dlg.showModal();
+  }
+
+  $('rows').addEventListener('click',function(e){
+    var tr=e.target.closest('tr[data-id]');
+    if(!tr) return;
+    var s=OG.samples.filter(function(x){return x.id===tr.getAttribute('data-id')})[0];
+    if(s) openSample(s);
+  });
+
+  $('dlgClose').addEventListener('click',function(){dlg.close()});
+  dlg.addEventListener('close',function(){
+    if(relief){relief.dispose(); relief=null;}
+    mode='flat';
+  });
+
+  render();
+})();
+</script>
+</body>
+</html>

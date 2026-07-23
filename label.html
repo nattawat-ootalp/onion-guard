@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>คิวกรอกผลลอกเปลือก · OnionGuard</title>
+<meta name="description" content="OnionGuard — คิวกรอกค่าความจริงหลังผ่าหัวหอม">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Anuphan:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Thai:wght@300;400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/assets/style.css">
+</head>
+<body>
+
+<main class="page">
+  <div class="phead">
+    <span class="route">/label</span>
+    <h1>คิวกรอกผลลอกเปลือก</h1>
+    <p class="sub">เป้าหมายคือหนึ่งรายการจบด้วยการแตะสองครั้ง คำทำนายของโมเดลถูกซ่อนไว้เป็นค่าเริ่มต้น เพื่อไม่ให้ผู้กรอกถูกชักนำ</p>
+  </div>
+
+  <div class="card">
+    <div class="card-h">
+      <span>รอกรอก <b id="left">—</b> รายการ</span>
+      <span class="push"></span>
+      <button class="mono" id="quick" aria-pressed="true" style="border-color:#3A342C;color:#9A9184;background:transparent">โหมดรวดเร็ว</button>
+      <button class="mono" id="reveal" aria-pressed="false" style="border-color:#3A342C;color:#9A9184;background:transparent">เผยคำทำนาย</button>
+    </div>
+
+    <div class="card-b stack-lg">
+      <div class="lq-card" id="cardArea">
+
+        <div class="stack">
+          <div class="stage"><div id="thumbBox" style="height:170px;display:flex;align-items:center;justify-content:center;padding:8px"></div></div>
+          <button class="ghost mono" id="open3d">ดูภูมิประเทศ 3D</button>
+        </div>
+
+        <div class="stack">
+          <div class="row" style="gap:14px;align-items:baseline">
+            <b class="mono" id="curId" style="font-size:1.25rem;letter-spacing:.06em">—</b>
+            <span class="muted small" id="curMeta">—</span>
+          </div>
+
+          <div class="metrics" style="grid-template-columns:1fr 1fr 1fr">
+            <div><span class="k">F_p05</span><span class="v" id="mF">—</span></div>
+            <div><span class="k">A_low</span><span class="v" id="mA">—</span></div>
+            <div><span class="k">blob_max</span><span class="v" id="mB">—</span></div>
+          </div>
+
+          <div>
+            <h4 class="lbl">ผลจากการลอกเปลือก</h4>
+            <div class="row">
+              <button id="tClear" style="border-color:var(--olive)">ปกติ<span class="keyhint">1</span></button>
+              <button id="tSusp" style="border-color:var(--ochre)">น่าสงสัย<span class="keyhint">2</span></button>
+              <button id="tPos" style="border-color:var(--rust)">พบเชื้อ<span class="keyhint">3</span></button>
+            </div>
+          </div>
+
+          <div id="layerRow" hidden>
+            <h4 class="lbl">ชั้นที่พบ</h4>
+            <div class="seg" id="layers">
+              <button data-l="0">0</button><button data-l="1">1</button>
+              <button data-l="2">2</button><button data-l="3">3+</button>
+            </div>
+          </div>
+
+          <div class="panel" id="predBox" hidden>
+            <span class="tiny muted">คำทำนายของระบบ</span>
+            <div class="row" style="margin-top:6px">
+              <span class="chip" id="predChip">—</span>
+              <span class="tiny muted" id="predAgree"></span>
+            </div>
+          </div>
+
+          <div class="row">
+            <button class="ghost mono" id="back" disabled>ย้อนกลับหนึ่งขั้น</button>
+            <button class="ghost mono" id="skip">ข้ามไปก่อน</button>
+            <span class="tiny muted" style="margin-left:auto" id="doneLine"></span>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <span class="tiny muted">ถัดไป</span>
+        <div class="upnext" id="upnext" style="margin-top:6px"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="g2" style="margin-top:22px">
+    <div class="note">
+      <b>ทำไมต้องซ่อนคำทำนาย</b>
+      <p>ถ้าผู้กรอกเห็นคำทำนายก่อน มีความเสี่ยงที่จะกรอกตามระบบ เมื่อค่าความจริงคือรากฐานของทั้งงานวิจัย ความเสี่ยงนี้รับไม่ได้ ปุ่มเผยคำทำนายมีไว้ใช้หลังบันทึกแล้วเท่านั้น</p>
+    </div>
+    <div class="note dead">
+      <b>ทำไมต้องมีปุ่มย้อนกลับ</b>
+      <p>โหมดรวดเร็วบันทึกทันทีที่เลือกโดยไม่ถามยืนยัน จึงจำเป็นต้องแก้ย้อนหลังได้หนึ่งขั้นเสมอ นี่คือทางออกที่ถูกกว่าการบังคับให้ยืนยันทุกครั้ง 250 รอบ</p>
+    </div>
+  </div>
+
+  <hr class="hr">
+
+  <section>
+    <div class="eye">กรอกแล้วในเซสชันนี้</div>
+    <div class="card"><div class="tbl-scroll">
+      <table class="t">
+        <thead><tr><th>รหัส</th><th style="text-align:right">F_p05</th><th>ผลจริง</th><th>ชั้น</th><th>ทำนาย</th><th>ตรงกัน</th></tr></thead>
+        <tbody id="log"><tr><td colspan="6" class="muted">ยังไม่ได้กรอกในเซสชันนี้</td></tr></tbody>
+      </table>
+    </div></div>
+  </section>
+</main>
+
+<dialog id="dlg">
+  <div class="card-h">ภูมิประเทศเรืองแสง <span class="push"></span><span id="dlgId" class="mono"></span></div>
+  <div style="padding:0">
+    <div class="stage" style="border:none;border-radius:0">
+      <div class="view"><canvas id="dlgCanvas"></canvas>
+        <div class="hud"><span>ภูมิประเทศเรืองแสง</span><span id="dlgVal"></span></div>
+      </div>
+    </div>
+  </div>
+  <div class="card-b row">
+    <span class="tiny muted" id="dlgScale"></span>
+    <button class="ghost mono" style="margin-left:auto" id="dlgClose">ปิด</button>
+  </div>
+</dialog>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="/assets/data.js"></script>
+<script src="/assets/shell.js"></script>
+<script src="/assets/relief.js"></script>
+<script>
+(function(){
+  'use strict';
+  var OG=window.OG, Shell=window.Shell;
+  var $=function(id){return document.getElementById(id)};
+
+  var queue=OG.pending.slice();
+  var idx=0, quick=true, revealed=false, pending=null, history=[], logRows=[];
+  var relief=null;
+
+  function cur(){return queue[idx]}
+
+  function paint(){
+    var s=cur();
+    if(!s){
+      $('cardArea').innerHTML='<div class="panel" style="grid-column:1/-1;text-align:center">'+
+        '<b>กรอกครบทุกรายการแล้ว</b><p class="tiny muted" style="margin-top:4px">'+
+        'ชุดข้อมูลพร้อมสำหรับหน้า /model</p></div>';
+      $('left').textContent='0';
+      return;
+    }
+    $('left').textContent=queue.length-idx;
+    $('curId').textContent=s.id;
+    $('curMeta').textContent=s.group+' · '+s.time;
+    $('mF').textContent=s.fp05.toFixed(2);
+    $('mA').innerHTML=s.aLow.toFixed(1)+' <small>%</small>';
+    $('mB').innerHTML=s.blob+' <small>px</small>';
+    $('thumbBox').innerHTML=Shell.disc(s,{size:300});
+    $('layerRow').hidden=true;
+    clearSel();
+    showPred();
+    $('upnext').innerHTML=queue.slice(idx+1,idx+7).map(function(x){
+      return '<span>'+x.id+'</span>';
+    }).join('')||'<span>— หมดคิว —</span>';
+    $('back').disabled=!history.length;
+  }
+
+  function clearSel(){
+    ['tClear','tSusp','tPos'].forEach(function(k){$(k).setAttribute('aria-pressed','false')});
+    [].forEach.call($('layers').children,function(b){b.setAttribute('aria-pressed','false')});
+  }
+
+  function showPred(){
+    var s=cur();
+    var box=$('predBox');
+    if(!revealed||!s){box.hidden=true;return}
+    box.hidden=false;
+    $('predChip').className='chip '+s.pred;
+    $('predChip').textContent=OG.LABEL_TH[s.pred];
+    $('predAgree').textContent=pending?(pending===s.pred?'ตรงกับที่กรอก':'ต่างจากที่กรอก'):'';
+  }
+
+  function choose(t){
+    var s=cur(); if(!s) return;
+    pending=t;
+    $({clear:'tClear',susp:'tSusp',pos:'tPos'}[t]).setAttribute('aria-pressed','true');
+    if(t==='clear'){
+      $('layerRow').hidden=true;
+      commit(t,0);
+    }else{
+      $('layerRow').hidden=false;      // ช่องชั้นโผล่เฉพาะเมื่อไม่ใช่ปกติ
+      if(!quick) return;
+    }
+    showPred();
+  }
+
+  function commit(t,layer){
+    var s=cur(); if(!s) return;
+    history.push({idx:idx,truth:s.truth,layers:s.layers});
+    s.truth=t; s.layers=layer;
+    s.cls = t==='pos' ? 'pos' : (s.fp05<0.5?'hardneg':'neg');
+    logRows.unshift({id:s.id,fp05:s.fp05,truth:t,layers:layer,pred:s.pred,ok:s.pred===t});
+    paintLog();
+    Shell.state.queue+=1; Shell.render();
+    $('doneLine').textContent='บันทึก '+s.id+' แล้ว';
+    pending=null;
+    idx++;
+    paint();
+  }
+
+  function paintLog(){
+    var tb=$('log');
+    if(!logRows.length){tb.innerHTML='<tr><td colspan="6" class="muted">ยังไม่ได้กรอกในเซสชันนี้</td></tr>';return}
+    tb.innerHTML=logRows.slice(0,12).map(function(r){
+      return '<tr><td><b>'+r.id+'</b></td><td class="num">'+r.fp05.toFixed(2)+'</td>'+
+        '<td><span class="chip '+r.truth+'">'+OG.LABEL_TH[r.truth]+'</span></td>'+
+        '<td class="num">'+(r.truth==='clear'?'—':r.layers)+'</td>'+
+        '<td>'+OG.LABEL_TH[r.pred]+'</td>'+
+        '<td class="'+(r.ok?'':'miss')+'">'+(r.ok?'✓':'✗ พลาด')+'</td></tr>';
+    }).join('');
+  }
+
+  /* ปุ่มสถานะ */
+  $('tClear').addEventListener('click',function(){choose('clear')});
+  $('tSusp').addEventListener('click',function(){choose('susp')});
+  $('tPos').addEventListener('click',function(){choose('pos')});
+
+  [].forEach.call($('layers').children,function(b){
+    b.addEventListener('click',function(){
+      [].forEach.call($('layers').children,function(x){x.setAttribute('aria-pressed','false')});
+      b.setAttribute('aria-pressed','true');
+      if(pending) commit(pending,+b.dataset.l);
+    });
+  });
+
+  $('quick').addEventListener('click',function(){
+    quick=!quick; this.setAttribute('aria-pressed',String(quick));
+    this.style.background=quick?'var(--bone)':'transparent';
+    this.style.color=quick?'var(--ink)':'#9A9184';
+  });
+  $('reveal').addEventListener('click',function(){
+    revealed=!revealed; this.setAttribute('aria-pressed',String(revealed));
+    this.style.background=revealed?'var(--bone)':'transparent';
+    this.style.color=revealed?'var(--ink)':'#9A9184';
+    showPred();
+  });
+
+  $('back').addEventListener('click',function(){
+    var h=history.pop(); if(!h) return;
+    var s=queue[h.idx];
+    s.truth=h.truth; s.layers=h.layers;
+    logRows.shift(); paintLog();
+    Shell.state.queue=Math.max(0,Shell.state.queue-1); Shell.render();
+    idx=h.idx; pending=null;
+    $('doneLine').textContent='ย้อนกลับมาที่ '+s.id;
+    paint();
+  });
+
+  $('skip').addEventListener('click',function(){
+    if(idx<queue.length-1){idx++;pending=null;paint()}
+  });
+
+  /* คีย์ลัด 1 2 3 — กรอกได้โดยไม่ต้องละสายตาจากหัวหอมที่ผ่าอยู่ */
+  document.addEventListener('keydown',function(e){
+    if(document.getElementById('dlg').open) return;
+    var t=e.target.tagName;
+    if(t==='INPUT'||t==='SELECT'||t==='TEXTAREA') return;
+    if(e.key==='1'){e.preventDefault();choose('clear')}
+    else if(e.key==='2'){e.preventDefault();choose('susp')}
+    else if(e.key==='3'){e.preventDefault();choose('pos')}
+    else if(e.key==='Backspace'){e.preventDefault();$('back').click()}
+  });
+
+  /* 3D dialog */
+  var dlg=$('dlg');
+  $('open3d').addEventListener('click',function(){
+    var s=cur(); if(!s) return;
+    dlg.showModal();
+    $('dlgId').textContent=s.id;
+    $('dlgVal').textContent='F_p05 = '+s.fp05.toFixed(2)+' · A_low = '+s.aLow.toFixed(1)+'%';
+    $('dlgScale').textContent='ตัวคูณความสูง ×'+window.OGRelief.HEIGHT_X.toFixed(1)+
+      ' · ค่าจริง F_p05 '+s.fp05.toFixed(2)+' · A_low '+s.aLow.toFixed(1)+'% · blob_max '+s.blob+' px';
+    if(relief) relief.dispose();
+    relief=window.OGRelief.create({canvas:$('dlgCanvas'),sample:s,plane:true,enabled:true});
+    setTimeout(function(){if(relief)relief.resize()},60);
+  });
+  $('dlgClose').addEventListener('click',function(){dlg.close()});
+  dlg.addEventListener('close',function(){if(relief){relief.dispose();relief=null}});
+
+  paint(); paintLog();
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>แผงสแกน · OnionGuard</title>
+<meta name="description" content="OnionGuard — แผงสแกนหัวหอมด้วยแสง UV มุมเดียวจากด้านบน">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Anuphan:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Thai:wght@300;400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/assets/style.css">
+</head>
+<body>
+
+<main class="page">
+  <div class="phead">
+    <span class="route">/scan</span>
+    <h1>แผงสแกน</h1>
+    <p class="sub">ออกแบบรอบเป้าหมายเดียว คือลดจำนวนการแตะต่อหนึ่งหัวให้เหลือน้อยที่สุด เพราะต้องสแกน 200 ถึง 250 หัวติดกัน</p>
+  </div>
+
+  <div class="scan-grid">
+
+    <!-- ซ้าย: ช่องมองตัวอย่าง -->
+    <div class="stack">
+      <div class="stage">
+        <div class="view" id="view">
+          <canvas id="relief" aria-label="ภูมิประเทศเรืองแสงสามมิติ ลากเพื่อหมุน"></canvas>
+          <div class="flat-view" id="flatView"></div>
+          <div class="hud">
+            <span id="hudMode">ภาพจากด้านบน</span>
+            <span id="hudVal">—</span>
+          </div>
+        </div>
+        <div class="stage-ctl">
+          <button id="bFlat" aria-pressed="true">ภาพจากด้านบน</button>
+          <button id="b3D" aria-pressed="false">ภูมิประเทศ 3D</button>
+          <button id="bPlane" class="push" aria-pressed="true" hidden>แสดงระนาบเกณฑ์</button>
+        </div>
+        <div class="stage-ctl" style="border-top:1px solid #2A251E">
+          <span style="font-family:'IBM Plex Mono',monospace;font-size:.62rem;letter-spacing:.14em;color:#6E6355;align-self:center">เฟรมดิบ</span>
+          <button id="fDark" aria-pressed="false">มืด</button>
+          <button id="fWhite" aria-pressed="false">ไฟขาว</button>
+          <button id="fUv" aria-pressed="true">UV</button>
+        </div>
+      </div>
+      <div class="stage-foot">
+        <span id="footScale">ตัวคูณความสูง ×3.0</span>
+        <span>ROI เส้นประ · วงสีสนิม = ต่ำกว่าเกณฑ์</span>
+        <span>ลากเพื่อหมุนในโหมด 3D</span>
+      </div>
+
+      <div class="note" id="poseNote" hidden>
+        <b>วางหัวไม่ตรงจิ๊ก</b>
+        <p id="poseMsg"></p>
+      </div>
+    </div>
+
+    <!-- ขวา: แผงควบคุม -->
+    <div class="stack">
+
+      <div class="card">
+        <div class="card-h">ตัวอย่าง<span class="push" id="autoTag">ถัดไปอัตโนมัติ</span></div>
+        <div class="card-b stack">
+          <div class="row">
+            <input type="text" id="sid" value="M-248" size="8" aria-label="รหัสตัวอย่าง"
+                   style="font-family:'IBM Plex Mono',monospace;font-size:1.05rem;letter-spacing:.06em;font-weight:500;width:110px">
+            <select id="group" aria-label="กลุ่มที่มา">
+              <option>margin</option><option>core</option><option>field-A</option><option>field-B</option>
+            </select>
+          </div>
+          <p class="tiny muted">ระบบตั้งรหัสถัดไปให้เอง แก้ได้เมื่อจำเป็น · กลุ่มจำค่าเดิมตลอดเซสชัน</p>
+        </div>
+      </div>
+
+      <div class="metrics" id="metrics">
+        <div><span class="k">F_p05</span><span class="v" id="mF">—</span></div>
+        <div><span class="k">A_low</span><span class="v" id="mA">—</span></div>
+        <div><span class="k">blob_max</span><span class="v" id="mB">—</span></div>
+      </div>
+
+      <div class="card">
+        <div class="card-h">ผลของระบบ</div>
+        <div class="card-b">
+          <span class="chip none" id="verdict">ยังไม่สแกน</span>
+          <p class="tiny muted" style="margin-top:8px" id="verdictWhy">กดสแกนเพื่อเก็บภาพหัวถัดไป</p>
+        </div>
+      </div>
+
+      <div>
+        <button class="big" id="scanBtn">สแกน <span class="keyhint">SPACE</span></button>
+        <div class="steps" id="steps">พร้อมรับหัวถัดไป</div>
+      </div>
+
+      <div class="row">
+        <button class="ghost mono" id="undo" disabled>ลบรายการล่าสุด</button>
+        <span class="tiny muted" id="lastLine" style="margin-left:auto"></span>
+      </div>
+
+      <div class="note">
+        <b>ไม่มีหน้าต่างยืนยัน</b>
+        <p>ระบบบันทึกเองเมื่อสแกนเสร็จ เมื่อต้องทำ 250 รอบ ทุกการแตะที่ไม่จำเป็นคือเวลาที่หายไปเป็นชั่วโมง ถ้าพลาดให้ใช้ปุ่มลบรายการล่าสุด</p>
+      </div>
+
+    </div>
+  </div>
+
+  <hr class="hr">
+
+  <section>
+    <div class="eye">บันทึกล่าสุดในเซสชันนี้</div>
+    <div class="card">
+      <div class="tbl-scroll">
+        <table class="t">
+          <thead><tr><th>ภาพ</th><th>รหัส</th><th>กลุ่ม</th><th style="text-align:right">F_p05</th><th style="text-align:right">A_low</th><th style="text-align:right">blob</th><th>ผลระบบ</th><th>เวลา</th></tr></thead>
+          <tbody id="recent"><tr><td colspan="8" class="muted">ยังไม่มีการสแกนในเซสชันนี้</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+</main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="/assets/data.js"></script>
+<script src="/assets/shell.js"></script>
+<script src="/assets/relief.js"></script>
+<script>
+(function(){
+  'use strict';
+  var OG=window.OG, Shell=window.Shell;
+
+  var nextNum=OG.TOTAL+1;
+  var current=null, relief=null, session=[], busy=false;
+  var mode='flat', frame='uv', planeOn=true;
+
+  var $=function(id){return document.getElementById(id)};
+  var sid=$('sid'), group=$('group'), flatView=$('flatView'), reliefCv=$('relief');
+
+  /* -------- สร้างผลการวัดหนึ่งหัว (จำลอง) -------- */
+  function measure(id, grp){
+    var seed=(id.replace(/\D/g,'')*7919+11)>>>0;
+    var r=OG.rng(seed);
+    var fp05=+(0.18+r()*0.58).toFixed(2);
+    var aLow=+Math.max(0.1,(0.85-fp05)*13+(r()-0.5)*2.4).toFixed(1);
+    var blob=Math.max(1,Math.round((0.8-fp05)*34+(r()-0.5)*7));
+    var pred=fp05>=OG.THRESHOLD+0.14?'clear':fp05>=OG.THRESHOLD?'susp':'pos';
+    var t=new Date();
+    return {id:id,group:grp,fp05:fp05,aLow:aLow,blob:blob,pred:pred,truth:null,seed:seed,
+            time:String(t.getHours()).padStart(2,'0')+':'+String(t.getMinutes()).padStart(2,'0'),
+            offCentre:r()>0.88};
+  }
+
+  /* -------- ช่องมองตัวอย่าง -------- */
+  function paintFlat(){
+    if(!current){
+      flatView.innerHTML='<div style="color:#5B5449;font-family:\'IBM Plex Mono\',monospace;'+
+        'font-size:.68rem;letter-spacing:.16em;text-align:center">รอวางหัวหอมบนจิ๊ก<br>คอหงายขึ้น</div>';
+      return;
+    }
+    flatView.innerHTML=Shell.disc(current,{size:320,mode:frame,marks:frame==='uv'});
+  }
+
+  function setMode(m){
+    mode=m;
+    var is3d=m==='3d';
+    $('b3D').setAttribute('aria-pressed',String(is3d));
+    $('bFlat').setAttribute('aria-pressed',String(!is3d));
+    $('bPlane').hidden=!is3d;
+    flatView.classList.toggle('on',!is3d);
+    reliefCv.style.display=is3d?'block':'none';
+    $('hudMode').textContent=is3d?'ภูมิประเทศเรืองแสง':'ภาพจากด้านบน';
+    $('footScale').textContent=is3d
+      ? 'ตัวคูณความสูง ×'+window.OGRelief.HEIGHT_X.toFixed(1)+' (ขยายเพื่อให้มองเห็น ค่าจริงอยู่ในตารางขวา)'
+      : 'ตัวคูณความสูง ×3.0 ใช้เฉพาะโหมด 3D';
+    if(relief){relief.enabled=is3d; if(is3d) relief.resize();}
+  }
+
+  function buildRelief(){
+    if(relief){relief.dispose(); relief=null;}
+    if(!current) return;
+    relief=window.OGRelief.create({canvas:reliefCv,sample:current,plane:planeOn,enabled:mode==='3d'});
+  }
+
+  function setFrame(f){
+    frame=f;
+    ['dark','white','uv'].forEach(function(k){
+      $('f'+k.charAt(0).toUpperCase()+k.slice(1)).setAttribute('aria-pressed',String(k===f));
+    });
+    if(mode!=='flat') setMode('flat');
+    paintFlat();
+  }
+
+  /* -------- แสดงผล -------- */
+  function paintResult(){
+    var v=$('verdict');
+    if(!current){
+      $('mF').textContent='—';$('mA').textContent='—';$('mB').textContent='—';
+      v.className='chip none'; v.textContent='ยังไม่สแกน';
+      $('verdictWhy').textContent='กดสแกนเพื่อเก็บภาพหัวถัดไป';
+      $('hudVal').textContent='—';
+      return;
+    }
+    $('mF').innerHTML=current.fp05.toFixed(2);
+    $('mA').innerHTML=current.aLow.toFixed(1)+' <small>%</small>';
+    $('mB').innerHTML=current.blob+' <small>px</small>';
+    v.className='chip '+current.pred;
+    v.textContent=OG.LABEL_TH[current.pred];
+    $('verdictWhy').textContent=current.pred==='pos'
+      ? 'F_p05 ต่ำกว่าจุดตัด '+OG.THRESHOLD+' และมี blob ต่อเนื่อง '+current.blob+' px'
+      : current.pred==='susp'
+        ? 'F_p05 อยู่ในช่วงคาบเกี่ยวรอบจุดตัด '+OG.THRESHOLD+' ต้องรอผลลอกเปลือก'
+        : 'F_p05 สูงกว่าจุดตัดชัดเจน ไม่พบบริเวณที่จมใต้ระนาบ';
+    $('hudVal').textContent='F_p05 = '+current.fp05.toFixed(2)+' · A_low = '+current.aLow.toFixed(1)+'%';
+  }
+
+  function paintRecent(){
+    var tb=$('recent');
+    if(!session.length){tb.innerHTML='<tr><td colspan="8" class="muted">ยังไม่มีการสแกนในเซสชันนี้</td></tr>';return}
+    tb.innerHTML=session.slice(0,8).map(function(s){
+      return '<tr><td><span class="thumb" style="display:inline-block;overflow:hidden">'+
+        Shell.disc(s,{size:44,roi:false})+'</span></td>'+
+        '<td><b>'+s.id+'</b></td><td>'+s.group+'</td>'+
+        '<td class="num">'+s.fp05.toFixed(2)+'</td>'+
+        '<td class="num">'+s.aLow.toFixed(1)+'%</td>'+
+        '<td class="num">'+s.blob+'</td>'+
+        '<td><span class="chip '+s.pred+'">'+OG.LABEL_TH[s.pred]+'</span></td>'+
+        '<td class="muted">'+s.time+'</td></tr>';
+    }).join('');
+  }
+
+  /* -------- ขั้นตอนการสแกน: ข้อความบอกขั้น ไม่ใช่วงกลมหมุน -------- */
+  var STEPS=[['ล็อกกล้อง',260],['เฟรมมืด',300],['ไฟขาว',300],['เปิด UV',420],['ประมวลผล',380]];
+
+  function runScan(){
+    if(busy) return;
+    var id=sid.value.trim().toUpperCase()||('M-'+String(nextNum).padStart(3,'0'));
+    var grp=group.value;
+    busy=true;
+    $('scanBtn').dataset.busy='true';
+    $('scanBtn').disabled=true;
+    $('undo').disabled=true;
+
+    var i=0;
+    (function step(){
+      if(i>=STEPS.length) return finish(id,grp);
+      $('steps').innerHTML='<b>'+(i+1)+'/'+STEPS.length+'</b> '+STEPS[i][0]+' ...';
+      $('scanBtn').textContent=STEPS[i][0];
+      var d=STEPS[i][1]; i++;
+      setTimeout(step,d);
+    })();
+  }
+
+  function finish(id,grp){
+    var m=measure(id,grp);
+
+    // ดักการวางผิดท่า: ไม่มีมุมอื่นมาชดเชย จึงต้องปฏิเสธการบันทึก
+    if(m.offCentre){
+      $('poseNote').hidden=false;
+      $('poseMsg').textContent='วัตถุเยื้องออกจากกึ่งกลาง ROI ไปทางขวา 11 มม. เลื่อนหัวหอมเข้าหาตัวจนชนขอบจิ๊กแล้วสแกนใหม่ ระบบยังไม่บันทึก '+id;
+      $('steps').textContent='ปฏิเสธการบันทึก · รอจัดท่าใหม่';
+      reset(false);
+      return;
+    }
+
+    $('poseNote').hidden=true;
+    current=m;
+    session.unshift(m);
+    nextNum=Math.max(nextNum, +id.replace(/\D/g,'')) + 1;
+    sid.value='M-'+String(nextNum).padStart(3,'0');
+
+    paintFlat(); paintResult(); paintRecent(); buildRelief();
+    Shell.state.today+=1; Shell.state.queue+=1; Shell.render();
+    $('steps').textContent='บันทึกแล้ว · พร้อมรับหัวถัดไป';
+    $('lastLine').textContent='ล่าสุด '+m.id+' เวลา '+m.time;
+    reset(true);
+  }
+
+  function reset(ok){
+    busy=false;
+    var b=$('scanBtn');
+    b.dataset.busy='false'; b.disabled=false;
+    b.innerHTML='สแกน <span class="keyhint">SPACE</span>';
+    $('undo').disabled=!session.length;
+    if(!ok) setTimeout(function(){$('steps').textContent='พร้อมรับหัวถัดไป'},2600);
+  }
+
+  $('undo').addEventListener('click',function(){
+    var gone=session.shift();
+    if(!gone) return;
+    current=session[0]||null;
+    nextNum=Math.max(OG.TOTAL+1,nextNum-1);
+    sid.value='M-'+String(nextNum).padStart(3,'0');
+    Shell.state.today=Math.max(0,Shell.state.today-1);
+    Shell.state.queue=Math.max(0,Shell.state.queue-1);
+    Shell.render();
+    paintFlat(); paintResult(); paintRecent(); buildRelief();
+    $('steps').textContent='ลบ '+gone.id+' แล้ว';
+    $('undo').disabled=!session.length;
+  });
+
+  $('bFlat').addEventListener('click',function(){setMode('flat')});
+  $('b3D').addEventListener('click',function(){setMode('3d')});
+  $('bPlane').addEventListener('click',function(){
+    planeOn=!planeOn;
+    if(relief) relief.setPlane(planeOn);
+    this.setAttribute('aria-pressed',String(planeOn));
+    this.textContent=planeOn?'แสดงระนาบเกณฑ์':'ซ่อนระนาบเกณฑ์';
+  });
+  $('fDark').addEventListener('click',function(){setFrame('dark')});
+  $('fWhite').addEventListener('click',function(){setFrame('white')});
+  $('fUv').addEventListener('click',function(){setFrame('uv')});
+  $('scanBtn').addEventListener('click',runScan);
+
+  /* มือข้างหนึ่งถือหัวหอมอยู่ จึงต้องกดด้วยแป้นเว้นวรรค */
+  document.addEventListener('keydown',function(e){
+    if(e.code!=='Space') return;
+    var t=e.target.tagName;
+    if(t==='INPUT'||t==='SELECT'||t==='TEXTAREA') return;
+    e.preventDefault();
+    runScan();
+  });
+
+  setMode('flat'); paintFlat(); paintResult();
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>แดชบอร์ดชุดข้อมูล · OnionGuard</title>
+<meta name="description" content="OnionGuard — คุมสัดส่วนคลาสและความคืบหน้าการเก็บข้อมูล">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Anuphan:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Thai:wght@300;400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/assets/style.css">
+</head>
+<body>
+
+<main class="page">
+  <div class="phead">
+    <span class="route">/dataset</span>
+    <h1>แดชบอร์ดชุดข้อมูล</h1>
+    <p class="sub">ตอบคำถามเดียว คือวันนี้ต้องไปหาหัวหอมแบบไหนมาเพิ่ม</p>
+  </div>
+
+  <div class="stack-lg">
+
+    <!-- 1. ภาพรวม + ความคืบหน้าไปยังเป้าหมาย -->
+    <div class="card">
+      <div class="card-h">ภาพรวมชุดข้อมูล<span class="push" id="sumMeta"></span></div>
+      <div class="card-b stack">
+        <div class="row" style="gap:6px 14px;align-items:baseline" id="sumLine"></div>
+        <div>
+          <div class="row" style="justify-content:space-between;margin-bottom:6px">
+            <span class="tiny mono muted" id="sumTarget"></span>
+            <span class="tiny mono" id="sumPct" style="color:var(--ink)"></span>
+          </div>
+          <div class="bar"><span id="sumBar"></span></div>
+          <p class="tiny muted" id="sumNote" style="margin-top:6px"></p>
+        </div>
+      </div>
+    </div>
+
+    <!-- 2. สัดส่วนคลาส — คำเตือนเป็นจำนวนหัว ไม่ใช่เปอร์เซ็นต์ -->
+    <div class="card">
+      <div class="card-h">สัดส่วนคลาส<span class="push">เทียบเป้าบนฐาน 250 หัว</span></div>
+      <div class="card-b">
+        <div class="tbl-scroll"><div id="cbal" style="min-width:440px;display:grid;gap:13px"></div></div>
+        <p class="tiny muted" style="margin-top:13px">เปอร์เซ็นต์คิดจากหัวที่กรอกผลแล้ว <b id="cbalBase"></b> หัว · ช่อง "ขาด" คือจำนวนหัวที่ต้องเก็บเพิ่มเพื่อให้ถึงเป้าบนฐาน 250 หัว</p>
+      </div>
+    </div>
+
+    <!-- 3. ฮิสโตแกรมซ้อนคลาสของ F_p05 — กราฟหลักของโครงการ -->
+    <div class="card">
+      <div class="card-h">การกระจายของ F_p05 แยกตามคลาส<span class="push">กราฟหลักของโครงการ</span></div>
+      <div class="card-b stack">
+        <div class="row" id="histLegend" style="gap:8px 18px;align-items:center"></div>
+        <div id="hist"></div>
+        <p class="tiny muted" id="histCap"></p>
+      </div>
+    </div>
+
+    <!-- 4 + 5. กล่องบ่ม และเหตุผลของการจัดหน้า -->
+    <div class="g2">
+      <div class="card">
+        <div class="card-h">ความคืบหน้ากล่องบ่ม<span class="push" id="incMeta"></span></div>
+        <div class="card-b">
+          <div class="tbl-scroll"><div id="inc" style="min-width:300px;display:grid;gap:11px"></div></div>
+          <p class="tiny muted" id="incCap" style="margin-top:12px"></p>
+        </div>
+      </div>
+      <div class="panel">
+        <h4 class="lbl">ทำไมหน้านี้จัดแบบนี้</h4>
+        <ul class="tick">
+          <li><b>ฮิสโตแกรม F_p05 แบบซ้อนคลาส</b> คือกราฟสำคัญที่สุดของโครงการ บอกได้ทันทีว่าสัญญาณแยกสองกลุ่มออกจากกันจริงไหม จึงต้องอยู่บนหน้านี้ตั้งแต่วันแรก</li>
+          <li><b>คำเตือนคลาสที่ยังขาด</b> รายงานเป็นจำนวนหัวที่ต้องเก็บเพิ่ม ไม่ใช่เปอร์เซ็นต์ เพราะผู้ใช้แปลงกลับเป็นจำนวนหัวอยู่ดี</li>
+          <li><b>ความคืบหน้ากล่องบ่ม</b> ติดตามว่าหัวก้ำกึ่งที่บ่มไว้เริ่มแสดงอาการกี่หัวในแต่ละวัน</li>
+        </ul>
+      </div>
+    </div>
+
+  </div>
+</main>
+
+<script src="/assets/data.js"></script>
+<script src="/assets/shell.js"></script>
+<script>
+(function(){
+  'use strict';
+  var OG=window.OG, Shell=window.Shell;
+  var $=function(id){return document.getElementById(id)};
+
+  var labeledTotal=OG.labeled.length;              // 185
+  var pending=OG.pending.length;                   // 62
+
+  /* ---------- 1. ภาพรวม ---------- */
+  var rawPct=OG.TOTAL/OG.TARGET*100;               // 98.8
+  $('sumLine').innerHTML=
+    '<span style="font-family:\'Anuphan\',sans-serif;font-weight:700;font-size:1.5rem;letter-spacing:-.01em">'+
+      OG.TOTAL+' หัว = '+OG.TOTAL+' ภาพ</span>'+
+    '<span class="muted">·</span>'+
+    '<span class="small">ยังไม่กรอกผล <b style="color:var(--rust)">'+pending+'</b> หัว</span>';
+  $('sumTarget').textContent='เป้าหมาย '+OG.TARGET+' หัว';
+  $('sumPct').textContent=Math.round(rawPct)+'%';
+  $('sumBar').style.width=Math.min(100,rawPct).toFixed(1)+'%';
+  $('sumNote').innerHTML='เหลืออีก <b>'+(OG.TARGET-OG.TOTAL)+'</b> หัวถึงเป้าหมาย · กรอกผลลอกเปลือกแล้ว <b>'+labeledTotal+'</b> หัว';
+  $('sumMeta').textContent='ซิงก์ล่าสุด '+((Shell&&Shell.state)?Shell.state.sync:'—');
+
+  /* ---------- 2. สัดส่วนคลาส (คำเตือนเป็นจำนวนหัว) ---------- */
+  var c=OG.counts();                               // {hardneg,neg,pos}
+  var CLS=[
+    {key:'hardneg', target:0.40, tar:'เป้า ≥40%', color:'olive'},
+    {key:'neg',     target:0.30, tar:'เป้า 30%',  color:'olive'},
+    {key:'pos',     target:0.30, tar:'เป้า 30%',  color:'rust'}
+  ];
+  function cbalRow(o){
+    var n=c[o.key];
+    var pct=labeledTotal?n/labeledTotal*100:0;
+    var need=Math.ceil(o.target*OG.TARGET);        // หัวที่ต้องมีบนฐาน 250
+    var shortHeads=need-n;
+    var warn=shortHeads>0
+      ? '<span style="color:var(--rust);font-weight:600">ขาด '+shortHeads+' หัว</span>'
+      : '<span style="color:var(--olive);font-weight:600">ครบเป้า</span>';
+    return '<div style="display:flex;flex-wrap:nowrap;gap:12px;align-items:center">'+
+      '<span style="flex:0 0 108px;font-size:.9rem;font-weight:500">'+OG.CLASS_TH[o.key]+'</span>'+
+      '<div class="bar" style="flex:1 1 auto;min-width:56px"><span class="'+o.color+'" style="width:'+pct.toFixed(1)+'%"></span></div>'+
+      '<span class="mono" style="flex:0 0 50px;text-align:right;font-size:.84rem;color:var(--ink)">'+pct.toFixed(1)+'%</span>'+
+      '<span class="mono tiny muted" style="flex:0 0 64px">'+o.tar+'</span>'+
+      '<span style="flex:0 0 92px;font-size:.84rem">'+warn+'</span>'+
+    '</div>';
+  }
+  $('cbal').innerHTML=CLS.map(cbalRow).join('');
+  $('cbalBase').textContent=labeledTotal;
+
+  /* ---------- 3. ฮิสโตแกรม F_p05 ซ้อนคลาส (inline SVG) ---------- */
+  var COL={ink:'#17130F',rule:'#C4B8A2',muted:'#6E6355',olive:'#37502C',rust:'#A83A12',ochre:'#B5821A'};
+  function buildHist(){
+    var h=OG.histogram(), bins=h.bins, cl=h.clear, po=h.pos, i;
+    var W=680,H=280,mL=40,mR=16,mT=18,mB=64;
+    var pw=W-mL-mR, ph=H-mT-mB, base=mT+ph;
+    var max=0; for(i=0;i<bins;i++) max=Math.max(max,cl[i]+po[i]);
+    var niceMax=Math.max(10,(Math.floor(max/10)+1)*10);   // เผื่อหัวแท่งไม่ชนขอบบน
+    var sc=ph/niceMax, binW=pw/bins, gap=binW*0.16, w=binW-gap;
+    var ovs=-1,ove=-1; for(i=0;i<bins;i++){ if(cl[i]>0&&po[i]>0){ if(ovs<0)ovs=i; ove=i; } }
+
+    var s='<svg viewBox="0 0 '+W+' '+H+'" width="100%" height="auto" preserveAspectRatio="xMidYMid meet" '+
+      'role="img" aria-label="ฮิสโตแกรมซ้อนคลาสของ F_p05 จำนวน 16 ช่อง คลาสปกติสีเขียวมะกอก คลาสพบเชื้อสีสนิม พร้อมเส้นจุดตัดที่ '+OG.THRESHOLD.toFixed(2)+'">';
+
+    // บริเวณซ้อนทับ (ไฮไลต์จาง)
+    if(ovs>=0){
+      var zx=mL+ovs*binW, zw=(ove-ovs+1)*binW;
+      s+='<rect x="'+zx.toFixed(1)+'" y="'+mT+'" width="'+zw.toFixed(1)+'" height="'+ph+'" fill="'+COL.ochre+'" opacity="0.12"/>';
+    }
+    // เส้นแนวนอน + ป้ายแกนตั้ง
+    for(var g=10; g<=niceMax; g+=10){
+      var gy=base-g*sc;
+      s+='<line x1="'+mL+'" y1="'+gy.toFixed(1)+'" x2="'+(W-mR)+'" y2="'+gy.toFixed(1)+'" stroke="'+COL.rule+'" stroke-width="1" opacity="0.5"/>';
+      s+='<text x="'+(mL-7)+'" y="'+(gy+3.5).toFixed(1)+'" text-anchor="end" font-family="\'IBM Plex Mono\',monospace" font-size="10" fill="'+COL.muted+'">'+g+'</text>';
+    }
+    // แท่งซ้อน: olive (คลาสปกติ) ล่าง, rust (พบเชื้อ) บน
+    for(i=0;i<bins;i++){
+      var x=mL+i*binW+gap/2, ch=cl[i]*sc, poh=po[i]*sc;
+      if(ch>0)  s+='<rect x="'+x.toFixed(1)+'" y="'+(base-ch).toFixed(1)+'" width="'+w.toFixed(1)+'" height="'+ch.toFixed(1)+'" fill="'+COL.olive+'"/>';
+      if(poh>0) s+='<rect x="'+x.toFixed(1)+'" y="'+(base-ch-poh).toFixed(1)+'" width="'+w.toFixed(1)+'" height="'+poh.toFixed(1)+'" fill="'+COL.rust+'"/>';
+    }
+    // เส้นฐาน
+    s+='<line x1="'+mL+'" y1="'+base+'" x2="'+(W-mR)+'" y2="'+base+'" stroke="'+COL.ink+'" stroke-width="1.2"/>';
+    // เส้นจุดตัด
+    var tx=mL+OG.THRESHOLD*pw;
+    s+='<line x1="'+tx.toFixed(1)+'" y1="'+mT+'" x2="'+tx.toFixed(1)+'" y2="'+base+'" stroke="'+COL.ink+'" stroke-width="1.2" stroke-dasharray="4 3"/>';
+    // ป้ายแกนนอน
+    s+='<text x="'+mL+'" y="'+(base+16)+'" text-anchor="middle" font-family="\'IBM Plex Mono\',monospace" font-size="11" fill="'+COL.muted+'">0</text>';
+    s+='<text x="'+(mL+pw)+'" y="'+(base+16)+'" text-anchor="middle" font-family="\'IBM Plex Mono\',monospace" font-size="11" fill="'+COL.muted+'">1.0</text>';
+    s+='<text x="'+tx.toFixed(1)+'" y="'+(base+16)+'" text-anchor="middle" font-family="\'IBM Plex Mono\',monospace" font-size="11" fill="'+COL.ink+'">'+OG.THRESHOLD.toFixed(2)+'</text>';
+    s+='<text x="'+tx.toFixed(1)+'" y="'+(base+30)+'" text-anchor="middle" font-family="\'IBM Plex Sans Thai\',sans-serif" font-size="11" fill="'+COL.muted+'">จุดตัด</text>';
+    // คำอธิบายชี้ไปยังบริเวณซ้อนทับ
+    if(ovs>=0){
+      var cx=mL+(ovs+ove+1)/2*binW;
+      cx=Math.max(mL+80,Math.min(W-mR-80,cx));
+      s+='<text x="'+cx.toFixed(1)+'" y="'+(base+52)+'" text-anchor="middle" font-family="\'IBM Plex Sans Thai\',sans-serif" font-size="12" fill="'+COL.muted+'">↑ บริเวณซ้อนทับ = หัวที่แยกยาก</text>';
+    }
+    s+='</svg>';
+    return s;
+  }
+  function swatch(col){
+    return '<span style="width:14px;height:14px;background:'+col+';border:1px solid var(--ink);border-radius:1px;display:inline-block;flex:0 0 auto"></span>';
+  }
+  $('histLegend').innerHTML=
+    '<span class="tiny" style="display:inline-flex;align-items:center;gap:7px">'+swatch('var(--olive)')+'คลาสปกติ (clear)</span>'+
+    '<span class="tiny" style="display:inline-flex;align-items:center;gap:7px">'+swatch('var(--rust)')+'พบเชื้อ (positive)</span>'+
+    '<span class="tiny muted" style="margin-left:auto">กรอกผลแล้ว '+labeledTotal+' หัว</span>';
+  $('hist').innerHTML=buildHist();
+  $('histCap').textContent='แกนนอน = F_p05 จาก 0 ถึง 1 · แกนตั้ง = จำนวนหัว · เส้นประ = จุดตัด '+OG.THRESHOLD.toFixed(2)+' · แถบไฮไลต์ = บริเวณซ้อนทับของสองคลาส คือหัวที่แยกยาก';
+
+  /* ---------- 4. ความคืบหน้ากล่องบ่ม (ข้อมูลจำลอง) ---------- */
+  var incTotal=48;
+  var incDays=[[1,3],[2,8],[3,15],[4,23],[5,30]];
+  function incRow(day,n){
+    var pct=n/incTotal*100;
+    return '<div style="display:flex;flex-wrap:nowrap;gap:12px;align-items:center">'+
+      '<span class="tiny muted" style="flex:0 0 54px">วันที่ '+day+'</span>'+
+      '<div class="bar" style="flex:1 1 auto;min-width:48px"><span class="ochre" style="width:'+pct.toFixed(1)+'%"></span></div>'+
+      '<span class="mono" style="flex:0 0 84px;text-align:right;font-size:.82rem;color:var(--ink)">'+n+' / '+incTotal+' หัว</span>'+
+    '</div>';
+  }
+  $('inc').innerHTML=incDays.map(function(d){return incRow(d[0],d[1])}).join('');
+  $('incMeta').textContent='หัวก้ำกึ่งในกล่อง '+incTotal+' หัว';
+  $('incCap').textContent='นับสะสมหัวที่เริ่มแสดงอาการรายวัน ยิ่งเพิ่มยิ่งช่วยยืนยันคลาส positive ของหัวที่ก้ำกึ่ง';
+})();
+</script>
+</body>
+</html>
