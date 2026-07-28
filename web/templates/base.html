@@ -24,6 +24,7 @@
   <div class="container mainnav-inner">
     <a href="{{ url_for('scan') }}" class="navlink {% if active == 'scan' %}is-active{% endif %}">สแกนตัวอย่าง</a>
     <a href="{{ url_for('samples') }}" class="navlink {% if active == 'samples' %}is-active{% endif %}">รายการตัวอย่าง</a>
+    <a href="{{ url_for('label') }}" class="navlink {% if active == 'label' %}is-active{% endif %}">กรอกผลแล็บ</a>
     <a href="{{ url_for('dataset') }}" class="navlink {% if active == 'dataset' %}is-active{% endif %}">ชุดข้อมูล</a>
     <a href="{{ url_for('model') }}" class="navlink {% if active == 'model' %}is-active{% endif %}">ประสิทธิภาพโมเดล</a>
   </div>

@@ -599,6 +599,67 @@ def model():
                             info=_data_source.get_model_info())
 
 
+@app.route("/label")
+def label():
+    """Enter the CompactDry culture result for scans that have none yet.
+
+    Kept separate from /scan because the two happen days apart: the photo is
+    taken up front, the culture is read after incubation. Scans still waiting
+    for a result are listed first, since those are the ones blocking the
+    dataset from being usable for training.
+    """
+    return render_template("label.html", active="label")
+
+
+@app.route("/api/scans")
+def api_scans():
+    client = getattr(_data_source, "client", None)
+    if client is None:
+        return jsonify({"error": "ยังไม่ได้ต่อ Supabase", "rows": []}), 503
+    try:
+        rows = client.select(
+            "scans",
+            columns="id,sample_code,captured_at,pred_label,pred_conf,compactdry_truth,"
+                    "truth_recorded_at,ood_status,borderline,image_path",
+            order="captured_at.desc",
+        )
+        return jsonify({"rows": rows})
+    except Exception as exc:  # noqa: BLE001
+        return jsonify({"error": str(exc)[:200], "rows": []}), 500
+
+
+@app.route("/api/label", methods=["POST"])
+def api_label():
+    """Record (or clear) the lab result for one scan."""
+    client = getattr(_data_source, "client", None)
+    if client is None:
+        return jsonify({"error": "ยังไม่ได้ต่อ Supabase"}), 503
+
+    body = request.get_json(silent=True) or {}
+    scan_id = body.get("id")
+    truth = body.get("compactdry_truth")
+    if scan_id is None:
+        return jsonify({"error": "ไม่ได้ระบุ id"}), 400
+    if truth not in (0, 1, None):
+        return jsonify({"error": "compactdry_truth ต้องเป็น 0, 1 หรือ null"}), 400
+
+    try:
+        patch = {"compactdry_truth": truth,
+                 "truth_recorded_at": "now()" if truth is not None else None}
+        client.update("scans", {"id": scan_id}, patch)
+        return jsonify({"ok": True, "id": scan_id, "compactdry_truth": truth})
+    except Exception as exc:  # noqa: BLE001
+        return jsonify({"error": str(exc)[:200]}), 500
+
+
+@app.route("/health")
+def health():
+    """Cheap liveness probe. Deliberately does NOT touch the model or the
+    database — it exists to keep a sleeping free-tier host awake, so it must
+    stay fast and must not fail when a dependency is briefly down."""
+    return jsonify({"status": "ok", "service": "onionguard"})
+
+
 @app.route("/reports/<path:filename>")
 def reports(filename):
     return send_from_directory(REPORTS_DIR, filename)
@@ -630,6 +691,15 @@ def capture():
     _prune_sessions()
     session_id = request.form.get("session_id") or None
     retake = request.form.get("retake") == "true"
+    sample_code = (request.form.get("sample_code") or "").strip()
+
+    # Required, because a scan whose sample code is unknown can never be
+    # matched to its CompactDry culture result — which makes it useless as
+    # training data no matter how good the image is.
+    if not sample_code:
+        return jsonify({"error": "กรุณากรอกรหัสตัวอย่าง (เช่น S001) ก่อนอัปโหลด"}), 400
+    if len(sample_code) > 32:
+        return jsonify({"error": "รหัสตัวอย่างยาวเกินไป (สูงสุด 32 ตัวอักษร)"}), 400
 
     files = request.files.getlist("images")
     if not files:
@@ -649,10 +719,12 @@ def capture():
             "dir": CAPTURES_DIR / f"{stamp}_{session_id}",
             "captured": [],
             "step_index": 0,
+            "sample_code": sample_code,
         }
         retake = False
 
     session = _sessions[session_id]
+    session["sample_code"] = sample_code
 
     if retake:
         if not session["captured"]:
@@ -755,7 +827,8 @@ def _save_scan(session, result, checks):
                 client.upload("scans", image_path, src.read_bytes(), content_type="image/png")
 
         row = client.insert("scans", {
-            "sample_code": session["dir"].name,
+            "sample_code": session.get("sample_code") or session["dir"].name,
+            "image_original": session["dir"].name,
             "image_path": image_path,
             "pred_label": int(checks["label"]),
             "pred_conf": round(float(result["confidence"]), 4),
@@ -838,6 +911,7 @@ def predict_session():
 
     return jsonify({
         "saved_to_db": saved,
+        "sample_code": session.get("sample_code"),
         "label": label,
         "label_text": LABEL_TEXT[label],
         "confidence": result["confidence"],

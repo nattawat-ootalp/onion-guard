@@ -1,0 +1,219 @@
+{% extends "base.html" %}
+{% block title %}กรอกผล CompactDry{% endblock %}
+
+{% block content %}
+<div class="pagehead">
+  <h2>กรอกผล CompactDry</h2>
+  <p>บันทึกผลเพาะเชื้อ CompactDry YM ของแต่ละตัวอย่าง — ผลนี้คือ ground truth ที่ใช้ฝึกโมเดล</p>
+</div>
+
+<div class="camerabar camerabar-info">
+  <span class="camerabar-tag">สำคัญ</span>
+  <span>
+    กรอกตาม<strong>ผลจานเพาะเชื้อจริงเท่านั้น</strong> ไม่ใช่ตามที่ระบบทำนายหรือที่ตาเห็นว่าเรืองแสง
+    — จะมีตัวอย่างที่ผลแล็บบวกแต่ไม่เรืองแสง และที่เรืองแสงแต่ผลแล็บลบ
+    <strong>ความต่างตรงนี้แหละคือสิ่งที่โมเดลต้องเรียนรู้</strong>
+    ถ้ากรอกตามที่ระบบทำนาย เท่ากับสอนให้มันเลียนแบบตัวเอง
+  </span>
+</div>
+
+<div class="grid-3" style="margin-bottom:22px;">
+  <div class="stat">
+    <p class="stat-label">รอผลแล็บ</p>
+    <p class="stat-value" id="stat-pending">—</p>
+    <p class="stat-sub">ยังใช้ฝึกโมเดลไม่ได้</p>
+  </div>
+  <div class="stat">
+    <p class="stat-label">พบความผิดปกติที่สัมพันธ์กับเชื้อรา</p>
+    <p class="stat-value is-found" id="stat-pos">—</p>
+  </div>
+  <div class="stat">
+    <p class="stat-label">ไม่พบความผิดปกติ</p>
+    <p class="stat-value is-clear" id="stat-neg">—</p>
+  </div>
+</div>
+
+<div class="panel">
+  <div class="filterbar">
+    <div class="field field-search">
+      <label class="field-label" for="search">ค้นหารหัสตัวอย่าง</label>
+      <input type="search" id="search" placeholder="เช่น S001">
+    </div>
+    <div class="field field-select">
+      <label class="field-label" for="filter">แสดง</label>
+      <select id="filter">
+        <option value="pending">รอผลแล็บ</option>
+        <option value="all">ทั้งหมด</option>
+        <option value="done">กรอกแล้ว</option>
+      </select>
+    </div>
+  </div>
+
+  <p class="muted" id="count-text" style="font-size:0.88rem;"></p>
+  <div id="load-error" class="errorbox hidden"></div>
+
+  <div class="table-scroll">
+    <table class="data" id="label-table">
+      <thead>
+        <tr>
+          <th>รหัสตัวอย่าง</th>
+          <th>วันเวลาที่สแกน</th>
+          <th>ระบบทำนาย</th>
+          <th>ผล CompactDry (ground truth)</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  const tbody = document.querySelector('#label-table tbody');
+  const search = document.getElementById('search');
+  const filter = document.getElementById('filter');
+  const countText = document.getElementById('count-text');
+  const loadError = document.getElementById('load-error');
+  let rows = [];
+
+  const LABEL = { 1: 'พบความผิดปกติที่สัมพันธ์กับเชื้อรา', 0: 'ไม่พบความผิดปกติ' };
+
+  function fmtDate(s) {
+    if (!s) return '—';
+    return String(s).replace('T', ' ').slice(0, 16);
+  }
+
+  function render() {
+    const q = search.value.trim().toLowerCase();
+    const mode = filter.value;
+    tbody.innerHTML = '';
+    let shown = 0;
+
+    rows.forEach(function (r) {
+      const hasTruth = r.compactdry_truth === 0 || r.compactdry_truth === 1;
+      if (mode === 'pending' && hasTruth) return;
+      if (mode === 'done' && !hasTruth) return;
+      if (q && !String(r.sample_code).toLowerCase().includes(q)) return;
+      shown++;
+
+      const tr = document.createElement('tr');
+
+      const code = document.createElement('td');
+      code.className = 'code'; code.textContent = r.sample_code;
+      tr.appendChild(code);
+
+      const when = document.createElement('td');
+      when.textContent = fmtDate(r.captured_at);
+      tr.appendChild(when);
+
+      const pred = document.createElement('td');
+      if (r.pred_label === 1 || r.pred_label === 0) {
+        const pill = document.createElement('span');
+        pill.className = 'pill ' + (r.pred_label === 1 ? 'pill-found' : 'pill-clear');
+        pill.textContent = LABEL[r.pred_label];
+        pred.appendChild(pill);
+        if (r.ood_status === 'out_of_range' || r.borderline) {
+          const note = document.createElement('span');
+          note.className = 'muted';
+          note.style.cssText = 'display:block;font-size:0.78rem;margin-top:3px;';
+          note.textContent = r.borderline ? 'ผลก้ำกึ่ง' : 'นอกช่วงข้อมูลฝึก';
+          pred.appendChild(note);
+        }
+      } else { pred.innerHTML = '<span class="muted">—</span>'; }
+      tr.appendChild(pred);
+
+      const act = document.createElement('td');
+      act.appendChild(makeControls(r));
+      tr.appendChild(act);
+
+      tbody.appendChild(tr);
+    });
+
+    countText.textContent = 'แสดง ' + shown + ' จาก ' + rows.length + ' รายการ';
+    updateStats();
+  }
+
+  function makeControls(r) {
+    const wrap = document.createElement('div');
+    wrap.className = 'labelbtns';
+
+    [[1, 'พบ'], [0, 'ไม่พบ']].forEach(function (opt) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'btn btn-label' + (r.compactdry_truth === opt[0] ? ' is-on-' + opt[0] : '');
+      b.textContent = opt[1];
+      b.addEventListener('click', function () { save(r, opt[0], wrap); });
+      wrap.appendChild(b);
+    });
+
+    if (r.compactdry_truth === 0 || r.compactdry_truth === 1) {
+      const clr = document.createElement('button');
+      clr.type = 'button';
+      clr.className = 'btn btn-secondary btn-label';
+      clr.textContent = 'ล้าง';
+      clr.title = 'กลับไปเป็น "ยังไม่ได้ตรวจ"';
+      clr.addEventListener('click', function () { save(r, null, wrap); });
+      wrap.appendChild(clr);
+    }
+
+    const st = document.createElement('span');
+    st.className = 'labelstatus';
+    st.textContent = (r.compactdry_truth === 0 || r.compactdry_truth === 1)
+      ? ('บันทึก ' + fmtDate(r.truth_recorded_at)) : 'ยังไม่ได้ตรวจ';
+    wrap.appendChild(st);
+    return wrap;
+  }
+
+  function save(r, value, wrap) {
+    const st = wrap.querySelector('.labelstatus');
+    st.textContent = 'กำลังบันทึก...';
+    fetch('/api/label', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: r.id, compactdry_truth: value })
+    })
+      .then(function (res) { return res.json().then(function (d) { return { ok: res.ok, d: d }; }); })
+      .then(function (res) {
+        if (!res.ok) { st.textContent = 'บันทึกไม่สำเร็จ: ' + (res.d.error || ''); return; }
+        r.compactdry_truth = value;
+        r.truth_recorded_at = value === null ? null : new Date().toISOString();
+        render();
+      })
+      .catch(function (e) { st.textContent = 'เชื่อมต่อไม่สำเร็จ: ' + e.message; });
+  }
+
+  function updateStats() {
+    let pend = 0, pos = 0, neg = 0;
+    rows.forEach(function (r) {
+      if (r.compactdry_truth === 1) pos++;
+      else if (r.compactdry_truth === 0) neg++;
+      else pend++;
+    });
+    document.getElementById('stat-pending').textContent = pend;
+    document.getElementById('stat-pos').textContent = pos;
+    document.getElementById('stat-neg').textContent = neg;
+  }
+
+  fetch('/api/scans')
+    .then(function (res) { return res.json().then(function (d) { return { ok: res.ok, d: d }; }); })
+    .then(function (res) {
+      if (!res.ok) {
+        loadError.textContent = 'โหลดข้อมูลไม่สำเร็จ: ' + (res.d.error || '');
+        loadError.classList.remove('hidden');
+        return;
+      }
+      rows = res.d.rows || [];
+      render();
+    })
+    .catch(function (e) {
+      loadError.textContent = 'เชื่อมต่อไม่สำเร็จ: ' + e.message;
+      loadError.classList.remove('hidden');
+    });
+
+  search.addEventListener('input', render);
+  filter.addEventListener('change', render);
+})();
+</script>
+{% endblock %}

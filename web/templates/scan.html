@@ -19,7 +19,16 @@
 
   <div class="panel">
     <h3 class="panel-title">เลือกภาพ {{ total_steps }} มุม</h3>
-    <p class="stepprompt">เลือกไฟล์ภาพหอมแดง 1 หัว ที่ถ่ายใต้แสง UV</p>
+    <p class="stepprompt">กรอกรหัสตัวอย่าง แล้วเลือกไฟล์ภาพหอมแดง 1 หัว ที่ถ่ายใต้แสง UV</p>
+
+    <div class="field">
+      <label class="field-label" for="sample-code">รหัสตัวอย่าง <span class="req">*</span></label>
+      <input type="text" id="sample-code" maxlength="32" placeholder="เช่น S001" autocomplete="off">
+      <p class="field-hint">
+        ต้องกรอกให้ตรงกับรหัสบนจานเพาะเชื้อ CompactDry — ถ้ารหัสไม่ตรง
+        จะจับคู่ผลแล็บกับภาพไม่ได้ และใช้เป็นข้อมูลฝึกไม่ได้เลย
+      </p>
+    </div>
 
     <div class="field">
       <label class="field-label" for="images">ไฟล์ภาพ</label>
@@ -69,6 +78,7 @@
     <div class="panel resultlayout-info">
       <h3 class="panel-title">ผลการคัดกรอง</h3>
 
+      <p class="result-sample" id="result-sample"></p>
       <div class="result-headline">
         <p class="result-label" id="result-label"></p>
       </div>
@@ -113,6 +123,7 @@
   const stageResult = document.getElementById('stage-result');
 
   const input = document.getElementById('images');
+  const sampleCode = document.getElementById('sample-code');
   const uploadBtn = document.getElementById('upload-btn');
   const proceedBtn = document.getElementById('proceed-btn');
   const cancelBtn = document.getElementById('cancel-btn');
@@ -145,20 +156,24 @@
 
   function setBusy(on, el, msg) {
     busy = on;
-    uploadBtn.disabled = on || !(input.files && input.files.length);
+    if (!on) { refreshUploadBtn(); } else { uploadBtn.disabled = true; }
     proceedBtn.disabled = on;
     cancelBtn.disabled = on;
     if (el) el.textContent = msg || '';
   }
 
-  input.addEventListener('change', function () {
-    uploadBtn.disabled = !(input.files && input.files.length);
-  });
+  function refreshUploadBtn() {
+    uploadBtn.disabled = busy || !(input.files && input.files.length) || !sampleCode.value.trim();
+  }
+  input.addEventListener('change', refreshUploadBtn);
+  sampleCode.addEventListener('input', refreshUploadBtn);
 
   // ---- ขั้น 1 -> 2 : อัปโหลดแล้วไปหน้าตรวจสอบ ----
   uploadBtn.addEventListener('click', function () {
     if (busy) return;
     const files = Array.from(input.files || []);
+    const code = sampleCode.value.trim();
+    if (!code) { showError('กรุณากรอกรหัสตัวอย่างก่อน'); sampleCode.focus(); return; }
     if (!files.length) { showError('ยังไม่ได้เลือกไฟล์'); return; }
     if (files.length > TOTAL) {
       showError('เลือกได้สูงสุด ' + TOTAL + ' ไฟล์ (เลือกมา ' + files.length + ')');
@@ -170,6 +185,7 @@
 
     const fd = new FormData();
     files.forEach(function (f) { fd.append('images', f); });
+    fd.append('sample_code', code);
     if (sessionId) fd.append('session_id', sessionId);
 
     fetch('/capture', { method: 'POST', body: fd })
@@ -263,6 +279,15 @@
     applyImage();
     toggleBtn.disabled = !d.clean_image;
 
+    const sEl = document.getElementById('result-sample');
+    let stxt = d.sample_code ? ('รหัสตัวอย่าง ' + d.sample_code) : '';
+    if (d.saved_to_db && !d.saved_to_db.ok) {
+      stxt += ' — ⚠ บันทึกลงฐานข้อมูลไม่สำเร็จ: ' + (d.saved_to_db.reason || '');
+    } else if (d.saved_to_db && d.saved_to_db.ok) {
+      stxt += ' · บันทึกลงฐานข้อมูลแล้ว';
+    }
+    sEl.textContent = stxt;
+
     const labelEl = document.getElementById('result-label');
     labelEl.textContent = d.label_text;
     labelEl.className = 'result-label ' + (isFound ? 'is-found' : 'is-clear');
@@ -333,6 +358,7 @@
     showingOverlay = true;
     previewGrid.innerHTML = '';
     input.value = '';
+    sampleCode.value = '';
     uploadBtn.disabled = true;
     clearError();
     document.getElementById('framing-warning').classList.add('hidden');
