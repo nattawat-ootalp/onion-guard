@@ -1,128 +1,169 @@
-{% extends "base.html" %}
-{% block title %}สแกนตัวอย่าง{% endblock %}
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>สแกนตัวอย่าง — OnionGuard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
 
-{% block content %}
-<div class="pagehead">
-  <h2>สแกนตัวอย่าง</h2>
-  <p>ถ่ายภาพหอมแดงใต้แสง UV 365 นาโนเมตร ด้วยมือถือ แล้วอัปโหลดเพื่อคัดกรองเบื้องต้น</p>
-</div>
-
-<!-- ขั้นที่ 1: ยังไม่ได้เลือกไฟล์ -->
-<div id="stage-upload">
-  <div class="camerabar camerabar-info">
-    <span class="camerabar-tag">วิธีถ่าย</span>
-    <span>
-      ใช้แอปกล้องมือถือใน <strong>โหมด Pro / Manual</strong> ล็อก ISO, ความเร็วชัตเตอร์ และ White Balance
-      <strong>ปิด HDR และโหมดกลางคืน</strong> วางมือถือให้ระยะคงที่ ถ่ายให้หัวหอมอยู่กลางกรอบ
-    </span>
-  </div>
-
-  <div class="panel">
-    <h3 class="panel-title" id="upload-heading">เลือกภาพ {{ total_steps }} ภาพ ตามลำดับ</h3>
-    <p class="stepcount" id="step-count">ขั้นตอนที่ {{ steps[0].step_number }} จาก {{ total_steps }}</p>
-    <p class="stepprompt" id="step-prompt">{{ steps[0].prompt }}</p>
-
-    <div class="field">
-      <label class="field-label" for="sample-code">รหัสตัวอย่าง <span class="req">*</span></label>
-      <input type="text" id="sample-code" maxlength="32" placeholder="เช่น S001" autocomplete="off">
-      <p class="field-hint">
-        ต้องกรอกให้ตรงกับรหัสบนจานเพาะเชื้อ CompactDry — ถ้ารหัสไม่ตรง
-        จะจับคู่ผลแล็บกับภาพไม่ได้ และใช้เป็นข้อมูลฝึกไม่ได้เลย
-      </p>
-    </div>
-
-    <div class="field">
-      <label class="field-label" for="images">ไฟล์ภาพ (เลือกทีละภาพตามขั้นตอนด้านบน)</label>
-      <input type="file" id="images" accept="image/*,.dng">
-      <p class="field-hint">
-        รองรับ <strong>DNG (RAW)</strong> · JPEG · PNG
-        <br>แนะนำ DNG มากที่สุด เพราะไม่ผ่าน noise reduction ของมือถือ ซึ่งจะลบจุดเรืองแสงเล็ก ๆ ทิ้ง
-      </p>
-    </div>
-
-    <div id="upload-shots-wrap" class="hidden">
-      <p class="shots-label">เลือกแล้ว</p>
-      <div class="previewgrid" id="upload-shots-grid"></div>
-    </div>
-
-    <div class="capture-actions">
-      <button type="button" class="btn btn-capture" id="upload-btn" disabled>{{ steps[0].button }}</button>
-      <button type="button" class="btn btn-secondary hidden" id="skip-btn">ข้ามขั้นตอนนี้ (ไม่มีภาพ)</button>
-      <span class="statustext" id="status-text"></span>
+<header class="masthead">
+  <div class="container masthead-inner">
+    <div class="masthead-titles">
+      <p class="masthead-eyebrow">OnionGuard</p>
+      <h1 class="masthead-title" id="project-title">ระบบ AI คัดกรองเชื้อราบนหอมแดงด้วยแสง UV 365 นาโนเมตร</h1>
     </div>
   </div>
-</div>
+</header>
 
-<!-- ขั้นที่ 2: ตรวจสอบภาพก่อนประมวลผล -->
-<div class="panel hidden" id="stage-review">
-  <h3 class="panel-title">ตรวจสอบภาพก่อนประมวลผล</h3>
-  <p class="previewhint">ระบบหาตำแหน่งหัวหอมอัตโนมัติ แล้วครอบ+ย่อให้อยู่กลางกรอบขนาดเท่ากันทุกภาพ — ตรวจว่าคมชัดและเห็นครบทั้งหัว</p>
-  <div id="framing-warning" class="warnbox hidden"></div>
-  <div class="previewgrid" id="preview-grid"></div>
-
-  <div class="capture-actions" style="margin-top:20px;">
-    <button type="button" class="btn btn-capture" id="proceed-btn">ดำเนินการต่อ</button>
-    <button type="button" class="btn btn-secondary btn-retake" id="cancel-btn">ยกเลิก</button>
-    <span class="statustext" id="review-status"></span>
+<nav class="mainnav">
+  <div class="container mainnav-inner">
+    <a href="/" class="navlink is-active">สแกนตัวอย่าง</a>
+    <a href="/history" class="navlink">ประวัติการแสกน</a>
   </div>
-</div>
+</nav>
 
-<!-- ขั้นที่ 3: ผลลัพธ์ -->
-<div class="hidden" id="stage-result">
-  <div class="resultlayout">
+<main class="container main">
+  <div class="mockbanner hidden" id="mock-banner" role="status">
+    <span class="mockbanner-tag">ข้อมูลจำลอง</span>
+    <span>ขณะนี้ระบบใช้ <strong>ข้อมูลจำลอง (mock data)</strong> ทั้งหมด ยังไม่ใช่ภาพถ่ายจริงจากกล่อง UV
+      ตัวเลขประสิทธิภาพทุกค่าบนเว็บนี้ใช้เพื่อทดสอบระบบเท่านั้น <strong>ยังไม่มีความหมายเชิงความแม่นยำ</strong></span>
+  </div>
 
-    <div class="panel resultlayout-image">
-      <h3 class="panel-title">ภาพผลการตรวจ</h3>
-      <figure class="overlay-figure">
-        <img id="result-img" alt="ภาพผลการตรวจจับ">
-        <figcaption id="result-caption"></figcaption>
-      </figure>
-      <div class="capture-actions" style="margin-top:14px;">
-        <button type="button" class="btn btn-secondary" id="toggle-btn">ซ่อนวงจุดที่ตรวจพบ</button>
-      </div>
+  <div class="pagehead">
+    <h2>สแกนตัวอย่าง</h2>
+    <p>ถ่ายภาพหอมแดงใต้แสง UV 365 นาโนเมตร ด้วยมือถือ แล้วอัปโหลดเพื่อคัดกรองเบื้องต้น</p>
+  </div>
+
+  <!-- ขั้นที่ 1: ยังไม่ได้เลือกไฟล์ -->
+  <div id="stage-upload">
+    <div class="camerabar camerabar-info">
+      <span class="camerabar-tag">วิธีถ่าย</span>
+      <span>
+        ใช้แอปกล้องมือถือใน <strong>โหมด Pro / Manual</strong> ล็อก ISO, ความเร็วชัตเตอร์ และ White Balance
+        <strong>ปิด HDR และโหมดกลางคืน</strong> วางมือถือให้ระยะคงที่ ถ่ายให้หัวหอมอยู่กลางกรอบ
+      </span>
     </div>
 
-    <div class="panel resultlayout-info">
-      <h3 class="panel-title">ผลการคัดกรอง</h3>
+    <div class="panel">
+      <h3 class="panel-title" id="upload-heading">กำลังโหลดขั้นตอนการถ่าย...</h3>
+      <p class="stepcount" id="step-count"></p>
+      <p class="stepprompt" id="step-prompt"></p>
 
-      <p class="result-sample" id="result-sample"></p>
-      <div class="result-headline">
-        <p class="result-label" id="result-label"></p>
+      <div class="field">
+        <label class="field-label" for="sample-code">รหัสตัวอย่าง <span class="req">*</span></label>
+        <input type="text" id="sample-code" maxlength="32" placeholder="เช่น S001" autocomplete="off" disabled>
+        <p class="field-hint">
+          ต้องกรอกให้ตรงกับรหัสบนจานเพาะเชื้อ CompactDry — ถ้ารหัสไม่ตรง
+          จะจับคู่ผลแล็บกับภาพไม่ได้ และใช้เป็นข้อมูลฝึกไม่ได้เลย
+        </p>
       </div>
 
-      <div class="result-figures">
-        <div class="figure-block">
-          <p class="figure-label">ความมั่นใจ</p>
-          <p class="figure-value" id="result-confidence"></p>
-        </div>
-        <div class="figure-block">
-          <p class="figure-label">เวลาประมวลผล</p>
-          <p class="figure-value" id="result-time"></p>
-        </div>
-        <div class="figure-block">
-          <p class="figure-label">จุดเล็กคมชัดที่ตรวจพบ</p>
-          <p class="figure-value" id="result-blobs"></p>
+      <div class="field">
+        <label class="field-label" for="images">ไฟล์ภาพ (เลือกทีละภาพตามขั้นตอนด้านบน)</label>
+        <input type="file" id="images" accept="image/*,.dng" disabled>
+        <p class="field-hint">
+          รองรับ <strong>DNG (RAW)</strong> · JPEG · PNG
+          <br>แนะนำ DNG มากที่สุด เพราะไม่ผ่าน noise reduction ของมือถือ ซึ่งจะลบจุดเรืองแสงเล็ก ๆ ทิ้ง
+        </p>
+      </div>
+
+      <div id="upload-shots-wrap" class="hidden">
+        <p class="shots-label">เลือกแล้ว</p>
+        <div class="previewgrid" id="upload-shots-grid"></div>
+      </div>
+
+      <div class="capture-actions">
+        <button type="button" class="btn btn-capture" id="upload-btn" disabled>เลือกภาพ</button>
+        <button type="button" class="btn btn-secondary hidden" id="skip-btn">ข้ามขั้นตอนนี้ (ไม่มีภาพ)</button>
+        <span class="statustext" id="status-text"></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ขั้นที่ 2: ตรวจสอบภาพก่อนประมวลผล -->
+  <div class="panel hidden" id="stage-review">
+    <h3 class="panel-title">ตรวจสอบภาพก่อนประมวลผล</h3>
+    <p class="previewhint">ระบบหาตำแหน่งหัวหอมอัตโนมัติ แล้วครอบ+ย่อให้อยู่กลางกรอบขนาดเท่ากันทุกภาพ — ตรวจว่าคมชัดและเห็นครบทั้งหัว</p>
+    <div id="framing-warning" class="warnbox hidden"></div>
+    <div class="previewgrid" id="preview-grid"></div>
+
+    <div class="capture-actions" style="margin-top:20px;">
+      <button type="button" class="btn btn-capture" id="proceed-btn">ดำเนินการต่อ</button>
+      <button type="button" class="btn btn-secondary btn-retake" id="cancel-btn">ยกเลิก</button>
+      <span class="statustext" id="review-status"></span>
+    </div>
+  </div>
+
+  <!-- ขั้นที่ 3: ผลลัพธ์ -->
+  <div class="hidden" id="stage-result">
+    <div class="resultlayout">
+
+      <div class="panel resultlayout-image">
+        <h3 class="panel-title">ภาพผลการตรวจ</h3>
+        <figure class="overlay-figure">
+          <img id="result-img" alt="ภาพผลการตรวจจับ">
+          <figcaption id="result-caption"></figcaption>
+        </figure>
+        <div class="capture-actions" style="margin-top:14px;">
+          <button type="button" class="btn btn-secondary" id="toggle-btn">ซ่อนวงจุดที่ตรวจพบ</button>
         </div>
       </div>
 
-      <div id="exif-box" class="hidden"></div>
-      <div id="partial-warning" class="warnbox hidden"></div>
-      <div class="notebox" id="result-disclaimer"></div>
+      <div class="panel resultlayout-info">
+        <h3 class="panel-title">ผลการคัดกรอง</h3>
+
+        <p class="result-sample" id="result-sample"></p>
+        <div class="result-headline">
+          <p class="result-label" id="result-label"></p>
+        </div>
+
+        <div class="result-figures">
+          <div class="figure-block">
+            <p class="figure-label">ความมั่นใจ</p>
+            <p class="figure-value" id="result-confidence"></p>
+          </div>
+          <div class="figure-block">
+            <p class="figure-label">เวลาประมวลผล</p>
+            <p class="figure-value" id="result-time"></p>
+          </div>
+          <div class="figure-block">
+            <p class="figure-label">จุดเล็กคมชัดที่ตรวจพบ</p>
+            <p class="figure-value" id="result-blobs"></p>
+          </div>
+        </div>
+
+        <div id="exif-box" class="hidden"></div>
+        <div id="partial-warning" class="warnbox hidden"></div>
+        <div class="notebox" id="result-disclaimer"></div>
+      </div>
+
     </div>
 
+    <div class="restart-row">
+      <button type="button" class="btn btn-capture" id="restart-btn">เริ่มใหม่</button>
+    </div>
   </div>
 
-  <div class="restart-row">
-    <button type="button" class="btn btn-capture" id="restart-btn">เริ่มใหม่</button>
+  <div id="error-panel" class="panel hidden">
+    <div class="errorbox" id="error-text"></div>
   </div>
-</div>
+</main>
 
-<div id="error-panel" class="panel hidden">
-  <div class="errorbox" id="error-text"></div>
-</div>
-{% endblock %}
+<footer class="sitefooter">
+  <div class="container">
+    <p id="footer-disclaimer">หมายเหตุ: เป็นระบบคัดกรองเบื้องต้น ไม่ใช่การยืนยันทางห้องปฏิบัติการ</p>
+    <p class="sitefooter-meta">OnionGuard · จำแนกด้วย Random Forest จากภาพถ่ายใต้แสง UV 365 นาโนเมตร คู่กับภาพแสงปกติ (ถ้ามี) ต่อหอมแดง 1 หัว</p>
+    <p class="sitefooter-meta"><a id="admin-link" href="#">ผู้ดูแลระบบ</a></p>
+  </div>
+</footer>
 
-{% block scripts %}
+<script src="config.js"></script>
+<script src="common.js"></script>
 <script>
 (function () {
   const stageUpload = document.getElementById('stage-upload');
@@ -138,6 +179,7 @@
   const restartBtn = document.getElementById('restart-btn');
   const toggleBtn = document.getElementById('toggle-btn');
 
+  const uploadHeading = document.getElementById('upload-heading');
   const stepCount = document.getElementById('step-count');
   const stepPrompt = document.getElementById('step-prompt');
   const uploadShotsWrap = document.getElementById('upload-shots-wrap');
@@ -151,33 +193,29 @@
   const resultImg = document.getElementById('result-img');
   const resultCaption = document.getElementById('result-caption');
 
-  const TOTAL = {{ total_steps }};
-  const FIRST_STEP = {{ steps[0] | tojson }};
+  let TOTAL = 0;
+  let FIRST_STEP = null;
   let sessionId = null;
-  let busy = false;
+  let busy = true; // stays busy until /capture/status has loaded
   let images = { overlay: null, clean: null };
   let showingOverlay = true;
-  // Accumulated across possibly-several /capture calls for ONE session —
-  // must NOT be cleared per call, or the previous step's accepted photo
-  // (e.g. the UV shot) disappears from view the moment the next one
-  // (the visible-light shot) is uploaded.
   let acceptedItems = [];
   let issueList = [];
-  let currentRequired = FIRST_STEP.required !== false;
+  let currentRequired = true;
 
   function showError(m) { errorText.textContent = m; errorPanel.classList.remove('hidden'); }
   function clearError() { errorPanel.classList.add('hidden'); }
-
-  function refreshSkipBtn() {
-    skipBtn.classList.toggle('hidden', currentRequired);
-    skipBtn.disabled = busy;
-  }
 
   function setStage(name) {
     stageUpload.classList.toggle('hidden', name !== 'upload');
     stageReview.classList.toggle('hidden', name !== 'review');
     stageResult.classList.toggle('hidden', name !== 'result');
     window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  function refreshSkipBtn() {
+    skipBtn.classList.toggle('hidden', currentRequired);
+    skipBtn.disabled = busy;
   }
 
   function setBusy(on, el, msg) {
@@ -252,7 +290,7 @@
     fd.append('sample_code', code);
     if (sessionId) fd.append('session_id', sessionId);
 
-    fetch('/capture', { method: 'POST', body: fd })
+    apiFetch('/capture', { method: 'POST', body: fd }, statusText)
       .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, data: d }; }); })
       .then(function (res) {
         if (!res.ok) { showError(res.data.error || 'อัปโหลดไม่สำเร็จ'); setBusy(false, statusText, ''); return; }
@@ -275,7 +313,7 @@
           stepCount.textContent = 'ขั้นตอนที่ ' + d.next_step.step_number + ' จาก ' + d.next_step.total_steps;
           stepPrompt.textContent = d.next_step.prompt;
           uploadBtn.textContent = d.next_step.button;
-          uploadBtn.disabled = true; // re-enabled once a file is chosen for this step
+          uploadBtn.disabled = true;
           refreshSkipBtn();
         }
       })
@@ -288,11 +326,11 @@
     clearError();
     setBusy(true, statusText, 'กำลังข้ามขั้นตอน...');
 
-    fetch('/capture/skip', {
+    apiFetch('/capture/skip', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ session_id: sessionId })
-    })
+    }, statusText)
       .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, data: d }; }); })
       .then(function (res) {
         if (!res.ok) { showError(res.data.error || 'ข้ามขั้นตอนไม่สำเร็จ'); setBusy(false, statusText, ''); return; }
@@ -324,11 +362,11 @@
     clearError();
     setBusy(true, reviewStatus, 'กำลังประมวลผล...');
 
-    fetch('/predict-session', {
+    apiFetch('/predict-session', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ session_id: sessionId })
-    })
+    }, reviewStatus)
       .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, data: d }; }); })
       .then(function (res) {
         if (!res.ok) { showError(res.data.error || 'ประมวลผลไม่สำเร็จ'); setBusy(false, reviewStatus, ''); return; }
@@ -463,7 +501,28 @@
     setStage('upload');
   }
   restartBtn.addEventListener('click', resetAll);
-  refreshSkipBtn();
+
+  // ---- โหลดขั้นตอนการถ่ายจากเซิร์ฟเวอร์ก่อนเปิดให้ใช้งาน ----
+  function initSteps() {
+    setBusy(true, statusText, 'กำลังเชื่อมต่อเซิร์ฟเวอร์...');
+    apiFetch('/capture/status', {}, statusText)
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        TOTAL = d.total_steps;
+        FIRST_STEP = d.steps[0];
+        uploadHeading.textContent = 'เลือกภาพ ' + TOTAL + ' ภาพ ตามลำดับ';
+        sampleCode.disabled = false;
+        input.disabled = false;
+        resetAll();
+        setBusy(false, statusText, '');
+      })
+      .catch(function (e) {
+        showError('เชื่อมต่อเซิร์ฟเวอร์ไม่สำเร็จ: ' + e.message + ' —ลองโหลดหน้านี้ใหม่');
+        statusText.textContent = '';
+      });
+  }
+  initSteps();
 })();
 </script>
-{% endblock %}
+</body>
+</html>

@@ -1,0 +1,22 @@
+# Dependencies for the Render-hosted Flask API (web/app.py).
+#
+# Deliberately excludes pandas / matplotlib — those are only used by the
+# dev-machine scripts (extract_features.py, train.py, eda.py,
+# generate_mock_data.py), none of which run on the server. scipy is not
+# needed either: predict.py and web/data_source.py were both kept
+# scipy-free on purpose (see src/predict.py's minimal-dependency contract).
+#
+# Install:  pip install -r requirements-web.txt
+# Run:      gunicorn --pythonpath web -b 0.0.0.0:$PORT app:app
+
+numpy
+opencv-python-headless
+joblib
+scikit-learn
+flask
+Pillow
+# Lets the API accept phone DNG/RAW uploads (src/onion_detect.py + web/app.py
+# _load_raw_to_bgr). Optional at import time (wrapped in try/except) but
+# expected in production — RAW is the recommended capture format.
+rawpy
+gunicorn

@@ -125,6 +125,7 @@ def _step_payload(index, steps):
         "kind": step.get("kind", "uv"),
         "prompt": step["prompt"],
         "button": step.get("button", "เลือกภาพ"),
+        "required": step.get("required", True),
         "step_number": index + 1,
         "total_steps": len(steps),
     }
@@ -558,6 +559,20 @@ def check_exif_consistency(captures, cfg):
 
 
 @app.after_request
+def add_cors_headers(response):
+    """Allow the Vercel-hosted static frontend to call this API cross-origin.
+
+    No cookies/credentials are used anywhere in this app, so reflecting any
+    origin (or "*") carries no session-hijack risk — it only lets a browser
+    read responses that were already public over plain HTTP.
+    """
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+    response.headers["Access-Control-Allow-Headers"] = "Content-Type"
+    return response
+
+
+@app.after_request
 def no_cache_html(response):
     """Stop the browser caching pages and the stylesheet.
 
@@ -626,6 +641,38 @@ def label():
     dataset from being usable for training.
     """
     return render_template("label.html", active="label")
+
+
+@app.route("/api/site-info")
+def api_site_info():
+    """Chrome data every static page needs — mock banner, title, disclaimer."""
+    return jsonify({
+        "is_mock": _data_source.is_mock_data(),
+        "project_title": "ระบบ AI คัดกรองเชื้อราบนหอมแดงด้วยแสง UV 365 นาโนเมตร",
+        "disclaimer": RESULT_DISCLAIMER,
+    })
+
+
+@app.route("/api/samples")
+def api_samples():
+    return jsonify({
+        "samples": _data_source.get_samples(),
+        "feature_columns": TABLE_FEATURE_COLUMNS,
+        "label_text": LABEL_TEXT,
+    })
+
+
+@app.route("/api/dataset-stats")
+def api_dataset_stats():
+    return jsonify({"stats": _data_source.get_dataset_stats()})
+
+
+@app.route("/api/model-metrics")
+def api_model_metrics():
+    return jsonify({
+        "metrics": _data_source.get_model_metrics(),
+        "info": _data_source.get_model_info(),
+    })
 
 
 @app.route("/api/scans")
@@ -814,6 +861,41 @@ def capture():
         "session_id": session_id,
         "accepted": accepted,
         "was_retake": retake,
+        "next_step": next_step,
+        "all_captured": next_step is None,
+    })
+
+
+@app.route("/capture/skip", methods=["POST"])
+def capture_skip():
+    """Skip the current step — only allowed when it is marked required:false.
+
+    Today that is the visible-light cross-check: the model must still
+    produce a screening result from the UV photo alone (visible_features.py
+    already returns a sentinel for "no visible photo"), so an operator who
+    cannot re-light the box should not be blocked from finishing the scan.
+    """
+    _prune_sessions()
+    body = request.get_json(silent=True) or {}
+    session_id = body.get("session_id")
+    session = _sessions.get(session_id)
+    if session is None:
+        return jsonify({"error": "ไม่พบเซสชัน กรุณาเริ่มใหม่"}), 400
+
+    steps = capture_steps()
+    idx = session["step_index"]
+    if idx >= len(steps):
+        return jsonify({"error": "ครบทุกขั้นตอนแล้ว"}), 400
+
+    step = steps[idx]
+    if step.get("required", True):
+        return jsonify({"error": f"ขั้นตอนนี้ ({step['id']}) จำเป็นต้องมีภาพ ข้ามไม่ได้"}), 400
+
+    session["step_index"] += 1
+    next_step = _step_payload(session["step_index"], steps)
+    return jsonify({
+        "session_id": session_id,
+        "skipped": step["id"],
         "next_step": next_step,
         "all_captured": next_step is None,
     })

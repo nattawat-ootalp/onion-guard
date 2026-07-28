@@ -217,7 +217,9 @@
         "id": "VISIBLE",
         "kind": "visible",
         "prompt": "ถ่ายหัวเดิมซ้ำด้วยแสงปกติ — ห้ามขยับกล้องหรือหัวหอม เปิดไฟห้อง (ปิดไฟ UV) แล้วถ่ายอีกใบ",
-        "button": "เลือกภาพ"
+        "button": "เลือกภาพ",
+        "required": false,
+        "_required_why": "Optional cross-check only (see uv_exclusive_dot_frac / visible_features.py, which already has a sentinel value for 'no visible photo supplied'). A screening result from the UV photo alone must still work when the operator has no chance to re-light the box."
       }
     ],
     "_full_protocol_example": [

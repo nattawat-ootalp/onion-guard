@@ -1,0 +1,27 @@
+# Render Blueprint for the OnionGuard API (web/app.py).
+#
+# The frontend (web-static/, deployed separately on Vercel) calls this
+# service by its public URL — see web-static/config.js. Supabase is the
+# database; its keys are never committed, they're entered once in the
+# Render dashboard after this Blueprint creates the service.
+#
+# Deploy: connect this repo to Render (New -> Blueprint) and it reads this
+# file automatically. Then fill in the three env vars below under
+# Dashboard -> onionguard-api -> Environment.
+services:
+  - type: web
+    name: onionguard-api
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements-web.txt
+    startCommand: gunicorn --pythonpath web --timeout 120 -b 0.0.0.0:$PORT app:app
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.3
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
