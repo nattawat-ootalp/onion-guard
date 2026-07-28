@@ -1,0 +1,26 @@
+# Python environment — 610MB, machine-specific. Recreate with:
+#   python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
+.venv/
+__pycache__/
+*.py[cod]
+
+# Mock images (29MB) are fully regenerable from the fixed seed in config.json:
+#   .venv/bin/python src/generate_mock_data.py
+# REAL photos are different — they are irreplaceable measurement data. When
+# they arrive, either drop this rule or track them with Git LFS. Do not let
+# this line quietly discard a dataset that took weeks of culturing to produce.
+images/*.png
+
+# Test uploads from the web app, not experimental data.
+captures/
+
+# Scratch outputs
+capture_test.png
+/tmp/
+
+# Secrets — none committed today, but the project will need Supabase keys
+# (Phase 5) and those must never enter the repo.
+.env
+.env.*
+*.key
+secrets.json

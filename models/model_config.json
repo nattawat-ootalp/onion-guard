@@ -1,0 +1,179 @@
+{
+  "_comment": "Model-specific config, separate from config.json's image-processing parameters \u2014 retune decision_threshold here (e.g. after seeing real photos) without touching any code.",
+  "feature_names": [
+    "mean_R",
+    "mean_G",
+    "mean_B",
+    "sd_R",
+    "sd_G",
+    "sd_B",
+    "brightness_mean",
+    "brightness_sd",
+    "texture",
+    "A_high",
+    "A_low",
+    "F_p95",
+    "F_p05",
+    "blob_max",
+    "NDFI_mean",
+    "NDFI_p95",
+    "NDFI_p05",
+    "n_small_sharp_blobs",
+    "n_large_blotches",
+    "avg_small_blob_diam_px",
+    "avg_large_blotch_diam_px",
+    "cluster_density",
+    "ratio_small_to_large"
+  ],
+  "training_feature_ranges": {
+    "mean_R": {
+      "min": 0.01644785143435,
+      "max": 0.085343100130558,
+      "p05": 0.03026241678744554,
+      "p95": 0.07421847060322756
+    },
+    "mean_G": {
+      "min": 0.0003099287860095,
+      "max": 0.0272710639983415,
+      "p05": 0.003563071496318945,
+      "p95": 0.020514247938990548
+    },
+    "mean_B": {
+      "min": 0.0261011645197868,
+      "max": 0.1091591790318489,
+      "p05": 0.03656258527189491,
+      "p95": 0.09333361312747002
+    },
+    "sd_R": {
+      "min": 0.0125911654904484,
+      "max": 0.0508955605328083,
+      "p05": 0.01458128970116373,
+      "p95": 0.04586622305214401
+    },
+    "sd_G": {
+      "min": 0.0017044213600456,
+      "max": 0.0366734005510807,
+      "p05": 0.0024667771765961802,
+      "p95": 0.03030743720009919
+    },
+    "sd_B": {
+      "min": 0.0104837380349636,
+      "max": 0.0566932223737239,
+      "p05": 0.016370841953903436,
+      "p95": 0.05166932698339216
+    },
+    "brightness_mean": {
+      "min": 0.0272266305983066,
+      "max": 0.0627416670322418,
+      "p05": 0.029652609769254865,
+      "p95": 0.0524712556973099
+    },
+    "brightness_sd": {
+      "min": 0.0109243523329496,
+      "max": 0.0464551597833633,
+      "p05": 0.012590287253260566,
+      "p95": 0.03979376405477516
+    },
+    "texture": {
+      "min": 0.008119536563754,
+      "max": 0.0371857248246669,
+      "p05": 0.00867848694324487,
+      "p95": 0.02980110729113212
+    },
+    "A_high": {
+      "min": 0.003128394692093,
+      "max": 0.126701904290315,
+      "p05": 0.0033640798873009452,
+      "p95": 0.10045544052787338
+    },
+    "A_low": {
+      "min": 0.1252355892321806,
+      "max": 0.1286173263165167,
+      "p05": 0.12680899902885415,
+      "p95": 0.1285411316727891
+    },
+    "F_p95": {
+      "min": 0.0397892631590366,
+      "max": 0.1275055259466171,
+      "p05": 0.043366297893226054,
+      "p95": 0.09806732572615144
+    },
+    "F_p05": {
+      "min": 0.0012141079641878,
+      "max": 0.0012141079641878,
+      "p05": 0.0012141079641878,
+      "p95": 0.0012141079641878
+    },
+    "blob_max": {
+      "min": 0.0,
+      "max": 1871.0,
+      "p05": 0.0,
+      "p95": 380.59999999999974
+    },
+    "NDFI_mean": {
+      "min": -0.956018567085266,
+      "max": -0.4200985431671142,
+      "p05": -0.8769218355417252,
+      "p95": -0.47819956094026567
+    },
+    "NDFI_p95": {
+      "min": -0.6919569373130798,
+      "max": -0.2814191281795501,
+      "p05": -0.6919569373130798,
+      "p95": -0.3459837406873704
+    },
+    "NDFI_p05": {
+      "min": -0.999990165233612,
+      "max": -0.6919569373130798,
+      "p05": -0.9533067256212234,
+      "p95": -0.6919569373130798
+    },
+    "n_small_sharp_blobs": {
+      "min": 0.0,
+      "max": 18.0,
+      "p05": 0.0,
+      "p95": 14.0
+    },
+    "n_large_blotches": {
+      "min": 0.0,
+      "max": 1.0,
+      "p05": 0.0,
+      "p95": 0.0
+    },
+    "avg_small_blob_diam_px": {
+      "min": 0.0,
+      "max": 20.8062837914404,
+      "p05": 0.0,
+      "p95": 19.078960233456282
+    },
+    "avg_large_blotch_diam_px": {
+      "min": 0.0,
+      "max": 48.80810576327963,
+      "p05": 0.0,
+      "p95": 0.0
+    },
+    "cluster_density": {
+      "min": 0.0,
+      "max": 0.0423926157707143,
+      "p05": 0.0,
+      "p95": 0.0369284756662258
+    },
+    "ratio_small_to_large": {
+      "min": 0.0,
+      "max": 0.9999999444444476,
+      "p05": 0.0,
+      "p95": 0.9999999285714336
+    }
+  },
+  "_ranges_note": "min/max/p05/p95 of each feature across the training set. Used at predict time to detect out-of-distribution input, which a Random Forest cannot signal on its own.",
+  "decision_threshold": 0.7313432835820896,
+  "random_seed": 42,
+  "best_params": {
+    "n_estimators": 200,
+    "max_depth": null,
+    "min_samples_leaf": 1
+  },
+  "oob_score": 0.9666666666666667,
+  "trained_on_n_samples": 60,
+  "note": "Trained on 100% MOCK data as of this run \u2014 a pipeline proof, not yet fit for real classification. Retrain once real photos replace data/features.csv."
+}

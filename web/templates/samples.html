@@ -1,0 +1,121 @@
+{% extends "base.html" %}
+{% block title %}รายการตัวอย่าง{% endblock %}
+
+{% block content %}
+<div class="pagehead">
+  <h2>รายการตัวอย่าง</h2>
+  <p>ตัวอย่างทั้งหมด {{ samples|length }} หัว พร้อมผลตรวจอ้างอิง (CompactDry YM) และผลทำนายของโมเดล</p>
+</div>
+
+<div class="panel">
+  <div class="filterbar">
+    <div class="field field-search">
+      <label class="field-label" for="search">ค้นหารหัสตัวอย่าง</label>
+      <input type="search" id="search" placeholder="เช่น S001">
+    </div>
+    <div class="field field-select">
+      <label class="field-label" for="filter-truth">ผลตรวจอ้างอิง</label>
+      <select id="filter-truth">
+        <option value="all">ทั้งหมด</option>
+        <option value="1">พบความผิดปกติที่สัมพันธ์กับเชื้อรา</option>
+        <option value="0">ไม่พบความผิดปกติ</option>
+      </select>
+    </div>
+    <div class="field field-select">
+      <label class="field-label" for="filter-agree">ความสอดคล้อง</label>
+      <select id="filter-agree">
+        <option value="all">ทั้งหมด</option>
+        <option value="yes">ตรงกัน</option>
+        <option value="no">ไม่ตรงกัน</option>
+      </select>
+    </div>
+  </div>
+
+  <p class="muted" id="result-count" style="font-size:0.88rem;"></p>
+
+  <div class="table-scroll">
+    <table class="data" id="samples-table">
+      <thead>
+        <tr>
+          <th>รหัส</th>
+          <th>ผลตรวจอ้างอิง</th>
+          <th>ผลทำนาย</th>
+          <th class="num">ความน่าจะเป็น</th>
+          <th>ความสอดคล้อง</th>
+          {% for col, label, places in feature_columns %}
+          <th class="num">{{ label }}</th>
+          {% endfor %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for s in samples %}
+        <tr data-code="{{ s.sample_code }}"
+            data-truth="{{ s.compactdry if s.compactdry is not none else 'na' }}"
+            data-agree="{% if s.correct is none %}na{% elif s.correct %}yes{% else %}no{% endif %}">
+          <td class="code">{{ s.sample_code }}</td>
+          <td>
+            {% if s.compactdry == 1 %}<span class="pill pill-found">{{ label_text[1] }}</span>
+            {% elif s.compactdry == 0 %}<span class="pill pill-clear">{{ label_text[0] }}</span>
+            {% else %}<span class="pill pill-neutral">ยังไม่มีผล</span>{% endif %}
+          </td>
+          <td>
+            {% if s.pred_label == 1 %}<span class="pill pill-found">{{ label_text[1] }}</span>
+            {% elif s.pred_label == 0 %}<span class="pill pill-clear">{{ label_text[0] }}</span>
+            {% else %}<span class="pill pill-neutral">—</span>{% endif %}
+          </td>
+          <td class="num">{{ "%.3f"|format(s.pred_proba) if s.pred_proba is not none else "—" }}</td>
+          <td>
+            {% if s.correct is none %}<span class="muted">—</span>
+            {% elif s.correct %}<span class="mark-ok">ตรงกัน</span>
+            {% else %}<span class="mark-bad">ไม่ตรงกัน</span>{% endif %}
+          </td>
+          {% for col, label, places in feature_columns %}
+          <td class="num">{{ ("%." ~ places ~ "f")|format(s.features[col]) }}</td>
+          {% endfor %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <p class="muted" style="margin-top:14px; font-size:0.85rem;">
+    “ผลทำนาย” คือผลจากการตรวจสอบไขว้ (cross-validation) ของเฟส 3 ซึ่งแต่ละหัวถูกทำนายโดยโมเดลที่ไม่เคยเห็นหัวนั้นในการฝึก
+  </p>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  const search = document.getElementById('search');
+  const filterTruth = document.getElementById('filter-truth');
+  const filterAgree = document.getElementById('filter-agree');
+  const rows = Array.from(document.querySelectorAll('#samples-table tbody tr'));
+  const countEl = document.getElementById('result-count');
+
+  function apply() {
+    const q = search.value.trim().toLowerCase();
+    const truth = filterTruth.value;
+    const agree = filterAgree.value;
+    let shown = 0;
+
+    rows.forEach(function (row) {
+      const matchQ = !q || row.dataset.code.toLowerCase().includes(q);
+      const matchT = truth === 'all' || row.dataset.truth === truth;
+      const matchA = agree === 'all' || row.dataset.agree === agree;
+      const visible = matchQ && matchT && matchA;
+      row.style.display = visible ? '' : 'none';
+      if (visible) shown++;
+    });
+
+    countEl.textContent = 'แสดง ' + shown + ' จาก ' + rows.length + ' ตัวอย่าง';
+  }
+
+  [search, filterTruth, filterAgree].forEach(function (el) {
+    el.addEventListener('input', apply);
+    el.addEventListener('change', apply);
+  });
+  apply();
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,147 @@
+{% extends "base.html" %}
+{% block title %}ประสิทธิภาพโมเดล{% endblock %}
+
+{% block content %}
+<div class="pagehead">
+  <h2>ประสิทธิภาพโมเดล</h2>
+  <p>Random Forest ประเมินด้วย StratifiedGroupKFold {{ metrics.n_folds }} fold (group = รหัสตัวอย่าง)</p>
+</div>
+
+{% set s = metrics.summary %}
+<div class="grid-3" style="margin-bottom:22px;">
+  <div class="stat">
+    <p class="stat-label">Accuracy</p>
+    <p class="stat-value">{{ "%.3f"|format(s.accuracy.mean) }}</p>
+    <p class="stat-sub">± {{ "%.3f"|format(s.accuracy.sd) }} (SD ระหว่าง fold)</p>
+  </div>
+  <div class="stat">
+    <p class="stat-label">Recall (ความไว)</p>
+    <p class="stat-value">{{ "%.3f"|format(s.recall.mean) }}</p>
+    <p class="stat-sub">± {{ "%.3f"|format(s.recall.sd) }}</p>
+  </div>
+  <div class="stat">
+    <p class="stat-label">Cohen’s Kappa</p>
+    <p class="stat-value">{{ "%.3f"|format(s.kappa.mean) }}</p>
+    <p class="stat-sub">± {{ "%.3f"|format(s.kappa.sd) }}</p>
+  </div>
+</div>
+
+<div class="panel">
+  <h3 class="panel-title">Confusion Matrix (รวมทุก fold)</h3>
+  {% set c = metrics.confusion %}
+  <table class="confusion">
+    <thead>
+      <tr>
+        <th style="background:transparent;"></th>
+        <th>ทำนาย: ไม่พบความผิดปกติ</th>
+        <th>ทำนาย: พบความผิดปกติที่สัมพันธ์กับเชื้อรา</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <th>จริง: ไม่พบความผิดปกติ</th>
+        <td class="cell-correct">{{ c.tn }}<span class="cell-note">True Negative</span></td>
+        <td class="cell-wrong">{{ c.fp }}<span class="cell-note">False Positive</span></td>
+      </tr>
+      <tr>
+        <th>จริง: พบความผิดปกติที่สัมพันธ์กับเชื้อรา</th>
+        <td class="cell-wrong">{{ c.fn }}<span class="cell-note">False Negative</span></td>
+        <td class="cell-correct">{{ c.tp }}<span class="cell-note">True Positive</span></td>
+      </tr>
+    </tbody>
+  </table>
+  <p class="muted" style="margin-top:12px; font-size:0.85rem;">
+    False Negative คือกรณีที่ควรระวังที่สุด — ตัวอย่างที่พบเชื้อจริงแต่ระบบรายงานว่าไม่พบความผิดปกติ
+  </p>
+</div>
+
+<div class="grid-2">
+  <div class="panel">
+    <h3 class="panel-title">ROC Curve (out-of-fold)</h3>
+    <figure class="report-figure">
+      <img src="{{ url_for('reports', filename='phase3_model_roc.png') }}" alt="ROC curve ของโมเดล">
+      <figcaption>สร้างจากค่าความน่าจะเป็นแบบ out-of-fold ทุกหัวถูกให้คะแนนโดยโมเดลที่ไม่เคยเห็นหัวนั้นในการฝึก</figcaption>
+    </figure>
+  </div>
+  <div class="panel">
+    <h3 class="panel-title">ความสำคัญของฟีเจอร์</h3>
+    <figure class="report-figure">
+      <img src="{{ url_for('reports', filename='phase3_feature_importance.png') }}" alt="กราฟความสำคัญของฟีเจอร์">
+      <figcaption>ค่าเฉลี่ยจากโมเดลทั้ง {{ metrics.n_folds }} fold</figcaption>
+    </figure>
+  </div>
+</div>
+
+<div class="panel">
+  <h3 class="panel-title">เมตริกรายละเอียด (เฉลี่ย ± SD)</h3>
+  <div class="table-scroll">
+    <table class="data">
+      <thead>
+        <tr><th>เมตริก</th><th class="num">ค่าเฉลี่ย</th><th class="num">SD</th></tr>
+      </thead>
+      <tbody>
+        {% set names = {'accuracy': 'Accuracy (ความถูกต้อง)', 'precision': 'Precision (ความแม่นยำ)',
+                        'recall': 'Recall / Sensitivity (ความไว)', 'specificity': 'Specificity (ความจำเพาะ)',
+                        'f1': 'F1-score', 'kappa': "Cohen’s Kappa"} %}
+        {% for key, label in names.items() %}
+        <tr>
+          <td>{{ label }}</td>
+          <td class="num">{{ "%.3f"|format(s[key].mean) }}</td>
+          <td class="num">{{ "%.3f"|format(s[key].sd) }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="panel">
+  <h3 class="panel-title">ผลรายรอบ (per fold)</h3>
+  <div class="table-scroll">
+    <table class="data">
+      <thead>
+        <tr>
+          <th>Fold</th><th class="num">ฝึก</th><th class="num">ทดสอบ</th>
+          <th class="num">Accuracy</th><th class="num">Recall</th><th class="num">Specificity</th>
+          <th class="num">F1</th><th class="num">Kappa</th><th class="num">OOB</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for f in metrics.folds %}
+        <tr>
+          <td class="code">{{ f.fold }}</td>
+          <td class="num">{{ f.n_train }}</td>
+          <td class="num">{{ f.n_test }}</td>
+          <td class="num">{{ "%.3f"|format(f.accuracy) }}</td>
+          <td class="num">{{ "%.3f"|format(f.recall) }}</td>
+          <td class="num">{{ "%.3f"|format(f.specificity) }}</td>
+          <td class="num">{{ "%.3f"|format(f.f1) }}</td>
+          <td class="num">{{ "%.3f"|format(f.kappa) }}</td>
+          <td class="num">{{ "%.3f"|format(f.oob_score) }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{% if info %}
+<div class="panel">
+  <h3 class="panel-title">รายละเอียดโมเดลที่บันทึกไว้</h3>
+  <div class="table-scroll">
+    <table class="data">
+      <tbody>
+        <tr><td>จำนวนฟีเจอร์ที่ใช้</td><td class="num">{{ info.n_features }}</td></tr>
+        <tr><td>เกณฑ์ตัดสิน (decision threshold)</td><td class="num">{{ "%.3f"|format(info.decision_threshold) }}</td></tr>
+        <tr><td>จำนวนต้นไม้ (n_estimators)</td><td class="num">{{ info.best_params.n_estimators }}</td></tr>
+        <tr><td>ความลึกสูงสุด (max_depth)</td><td class="num">{{ info.best_params.max_depth if info.best_params.max_depth is not none else "ไม่จำกัด" }}</td></tr>
+        <tr><td>min_samples_leaf</td><td class="num">{{ info.best_params.min_samples_leaf }}</td></tr>
+        <tr><td>random_state</td><td class="num">{{ info.random_seed }}</td></tr>
+        <tr><td>OOB score (ฝึกด้วยข้อมูลทั้งหมด)</td><td class="num">{{ "%.3f"|format(info.oob_score) }}</td></tr>
+        <tr><td>จำนวนตัวอย่างที่ใช้ฝึกโมเดลสุดท้าย</td><td class="num">{{ info.trained_on_n_samples }}</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+{% endblock %}

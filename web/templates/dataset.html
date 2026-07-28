@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% block title %}ชุดข้อมูล{% endblock %}
+
+{% block content %}
+<div class="pagehead">
+  <h2>ชุดข้อมูล</h2>
+  <p>ภาพรวมจำนวนตัวอย่างแต่ละคลาส และความสมดุลของข้อมูลที่ใช้ฝึกโมเดล</p>
+</div>
+
+<div class="grid-4" style="margin-bottom:22px;">
+  <div class="stat">
+    <p class="stat-label">ตัวอย่างทั้งหมด</p>
+    <p class="stat-value">{{ stats.total_samples }}</p>
+    <p class="stat-sub">หัว (1 หัว = 1 หน่วยตัวอย่าง)</p>
+  </div>
+  <div class="stat">
+    <p class="stat-label">พบความผิดปกติที่สัมพันธ์กับเชื้อรา</p>
+    <p class="stat-value is-found">{{ stats.n_positive }}</p>
+    <p class="stat-sub">{{ "%.1f"|format(stats.pct_positive) }}% ของตัวอย่างที่มีผลตรวจ</p>
+  </div>
+  <div class="stat">
+    <p class="stat-label">ไม่พบความผิดปกติ</p>
+    <p class="stat-value is-clear">{{ stats.n_negative }}</p>
+    <p class="stat-sub">{{ "%.1f"|format(stats.pct_negative) }}% ของตัวอย่างที่มีผลตรวจ</p>
+  </div>
+  <div class="stat">
+    <p class="stat-label">ภาพทั้งหมด</p>
+    <p class="stat-value">{{ stats.n_images }}</p>
+    <p class="stat-sub">{{ stats.n_views_per_sample }} มุมต่อหัว</p>
+  </div>
+</div>
+
+<div class="panel">
+  <h3 class="panel-title">ความสมดุลของข้อมูล</h3>
+
+  {% set total_labelled = stats.n_positive + stats.n_negative %}
+  {% if total_labelled > 0 %}
+  <div class="balancebar">
+    <div class="balancebar-seg balancebar-found" style="width: {{ stats.pct_positive }}%;">
+      {{ stats.n_positive }}
+    </div>
+    <div class="balancebar-seg balancebar-clear" style="width: {{ stats.pct_negative }}%;">
+      {{ stats.n_negative }}
+    </div>
+  </div>
+  <div class="legend">
+    <span class="legend-item"><span class="legend-swatch legend-found"></span>พบความผิดปกติที่สัมพันธ์กับเชื้อรา ({{ stats.n_positive }})</span>
+    <span class="legend-item"><span class="legend-swatch legend-clear"></span>ไม่พบความผิดปกติ ({{ stats.n_negative }})</span>
+  </div>
+
+  <table class="data" style="margin-top:20px;">
+    <thead>
+      <tr><th>รายการ</th><th class="num">ค่า</th><th>ความหมาย</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>อัตราส่วนความสมดุล</td>
+        <td class="num">{{ "%.2f"|format(stats.balance_ratio) }}</td>
+        <td>
+          {% if stats.balance_ratio >= 0.8 %}สมดุลดี (ค่า 1.00 = สองคลาสเท่ากันพอดี)
+          {% elif stats.balance_ratio >= 0.5 %}ค่อนข้างสมดุล ยังใช้ได้
+          {% else %}ไม่สมดุล ควรระวังการตีความ recall/precision{% endif %}
+        </td>
+      </tr>
+      <tr>
+        <td>ตัวอย่างที่ยังไม่มีผลตรวจอ้างอิง</td>
+        <td class="num">{{ stats.n_unlabelled }}</td>
+        <td>{% if stats.n_unlabelled == 0 %}ครบทุกหัว{% else %}รอผลเพาะเชื้อ CompactDry YM{% endif %}</td>
+      </tr>
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted">ยังไม่มีตัวอย่างที่มีผลตรวจอ้างอิง</p>
+  {% endif %}
+</div>
+
+<div class="panel">
+  <h3 class="panel-title">การกระจายของฟีเจอร์แยกตามคลาส</h3>
+  <figure class="report-figure">
+    <img src="{{ url_for('reports', filename='phase2_distributions_viewmean.png') }}"
+         alt="กราฟการกระจายของฟีเจอร์แต่ละตัว แยกสีตามคลาส">
+    <figcaption>
+      ฮิสโทแกรมของฟีเจอร์แต่ละตัว (ค่าเฉลี่ยจาก 4 มุม) แยกสีตามคลาส —
+      สีน้ำเงิน = ไม่พบความผิดปกติ, สีส้ม = พบความผิดปกติ
+    </figcaption>
+  </figure>
+</div>
+{% endblock %}

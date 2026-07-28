@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}OnionGuard{% endblock %} — OnionGuard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+
+<header class="masthead">
+  <div class="container masthead-inner">
+    <div class="masthead-titles">
+      <p class="masthead-eyebrow">โครงงานวิทยาศาสตร์ · OnionGuard</p>
+      <h1 class="masthead-title">{{ project_title }}</h1>
+    </div>
+  </div>
+</header>
+
+<nav class="mainnav">
+  <div class="container mainnav-inner">
+    <a href="{{ url_for('scan') }}" class="navlink {% if active == 'scan' %}is-active{% endif %}">สแกนตัวอย่าง</a>
+    <a href="{{ url_for('samples') }}" class="navlink {% if active == 'samples' %}is-active{% endif %}">รายการตัวอย่าง</a>
+    <a href="{{ url_for('dataset') }}" class="navlink {% if active == 'dataset' %}is-active{% endif %}">ชุดข้อมูล</a>
+    <a href="{{ url_for('model') }}" class="navlink {% if active == 'model' %}is-active{% endif %}">ประสิทธิภาพโมเดล</a>
+  </div>
+</nav>
+
+<main class="container main">
+  {% if is_mock %}
+  <div class="mockbanner" role="status">
+    <span class="mockbanner-tag">ข้อมูลจำลอง</span>
+    <span>ขณะนี้ระบบใช้ <strong>ข้อมูลจำลอง (mock data)</strong> ทั้งหมด ยังไม่ใช่ภาพถ่ายจริงจากกล่อง UV
+      ตัวเลขประสิทธิภาพทุกค่าบนเว็บนี้ใช้เพื่อทดสอบระบบเท่านั้น <strong>ยังไม่มีความหมายเชิงความแม่นยำ</strong></span>
+  </div>
+  {% endif %}
+
+  {% block content %}{% endblock %}
+</main>
+
+<footer class="sitefooter">
+  <div class="container">
+    <p>{{ disclaimer }}</p>
+    <p class="sitefooter-meta">OnionGuard · จำแนกด้วย Random Forest จากภาพถ่ายใต้แสง UV 365 นาโนเมตร 4 มุมต่อหัว</p>
+  </div>
+</footer>
+
+{% block scripts %}{% endblock %}
+</body>
+</html>

@@ -1,0 +1,26 @@
+# Dependencies for the Raspberry Pi under architecture A: the Pi runs the web
+# app, the camera, and the classifier together, reached over the LAN at
+# http://<pi-ip>:5000. No cloud component.
+#
+# Deliberately excludes pandas / scipy / Pillow / matplotlib — those are only
+# needed by the dev-machine scripts (extract_features.py, train.py, eda.py,
+# generate_mock_data.py), none of which run on the Pi.
+#
+# scikit-learn is listed even though predict.py never imports it directly:
+# joblib.load() needs the RandomForestClassifier class importable to
+# reconstruct models/model.joblib. Unavoidable for a pickled sklearn model.
+#
+# Install:  pip install -r requirements-pi.txt
+# Run:      python web/app.py     (binds 0.0.0.0:5000; debug stays OFF)
+
+numpy
+opencv-python-headless
+joblib
+scikit-learn
+flask
+# Pillow reads uploaded phone photos: it applies the EXIF orientation flag
+# (cv2.imread ignores it, so portrait shots would come in sideways) and
+# exposes the EXIF shooting settings used to verify Pro mode stayed locked.
+Pillow
+# Optional: only needed if the phone saves HEIC instead of JPEG.
+# pillow-heif

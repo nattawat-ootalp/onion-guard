@@ -1,0 +1,8 @@
+numpy
+Pillow
+pandas
+scipy
+matplotlib
+scikit-learn
+opencv-python-headless
+joblib

@@ -1,0 +1,278 @@
+{
+  "_comment": "Shared parameters for mock data generation and (later) feature extraction / predict. Keep every phase reading from this file instead of hardcoding values.",
+  "samples": {
+    "n_samples": 60,
+    "n_views": 1,
+    "n_positive": 30,
+    "n_negative": 30,
+    "sample_code_prefix": "S",
+    "sample_code_digits": 3
+  },
+  "random_seed": 42,
+  "image": {
+    "size_px": 640,
+    "format": "PNG"
+  },
+  "roi": {
+    "_comment": "Circular region-of-interest, as a fraction of image size. Centre stays [0.5, 0.5] because src/onion_detect.py RE-FRAMES every uploaded photo so the onion is centred at a fixed scale — the assumption is made true rather than hoped for. radius_fraction is onion_detect.onion_radius_frac plus a margin so the onion edge is not clipped. NOTE the mock generator still draws at radius 0.38; regenerate mock data if these must match exactly.",
+    "center_fraction": [
+      0.5,
+      0.5
+    ],
+    "radius_fraction": 0.45
+  },
+  "onion_detect": {
+    "_comment": "Auto framing for phone photos (src/onion_detect.py). Measured on the first real Android shot: the onion sat at frame fraction (0.695, 0.462), 31% of it fell outside a fixed centred ROI, and 84% of that ROI was empty background. Re-framing fixes position AND scale, so the blob detector's absolute pixel thresholds mean the same physical size in every photo.",
+    "onion_radius_frac": 0.42,
+    "detect_k": 4.0,
+    "min_area_frac": 0.005,
+    "warn_pad_area_frac": 0.25,
+    "sanity": {
+      "_comment": "Guard rails for hand-held shooting (no jig). Auto-detection is kept as the primary path because measured drift between two real hand-held shots was 28% of frame width in position and 14% in scale — a fixed ROI cannot correct scale at all, and a 14% scale error shifts every absolute blob-area threshold by 14%. These bounds catch the opposite failure: a detection that latched onto the wrong thing. Out-of-range means fall back to a centred crop and say so, rather than silently mis-framing the measurement.",
+      "min_radius_frac_of_frame": 0.15,
+      "max_radius_frac_of_frame": 0.95,
+      "max_radius_spread_across_views": 0.25
+    },
+    "background_consistency": {
+      "_comment": "EXIF-free replacement for the Pro-mode check: the tested Android phone (realme 11 5G) writes no ISO/ExposureTime at all, so EXIF cannot prove the exposure stayed locked. The box background is a fixed surface, so if its brightness differs between angles the phone re-exposed. Compared as a RATIO because exposure scales multiplicatively — on a near-black background (median ~9) a 40% exposure change moves the level only ~4 counts, so an absolute threshold misses real drift. min_level_to_judge avoids ratio noise when the background is so dark that quantization dominates.",
+      "enabled": true,
+      "max_ratio": 1.25,
+      "min_level_to_judge": 4.0
+    }
+  },
+  "mock": {
+    "_comment": "Knobs controlling how the synthetic UV images are generated. Retune freely once real photos are available and comparison shows the mock is unrealistic.",
+    "background_level": [
+      6,
+      2,
+      10
+    ],
+    "base_onion_color_mean": [
+      80,
+      30,
+      90
+    ],
+    "base_onion_color_jitter": 12,
+    "base_noise_sigma": 6,
+    "per_view_brightness_jitter": 0.08,
+    "fungal_dots": {
+      "_comment": "Small sharp-edged bright dots simulating real UV fluorescence at degrading tissue: clusters of small distinct spots, not one big blurry patch. Severity (mild/severe) is rolled ONCE per head and applies to all 4 views, since it's a property of the head, not the camera angle.",
+      "color": [
+        245,
+        245,
+        235
+      ],
+      "dot_radius_frac_min": 0.008,
+      "dot_radius_frac_max": 0.018,
+      "edge_transition_px": 1.5,
+      "intensity_min": 170,
+      "intensity_max": 255,
+      "per_view_visibility_prob": 0.75,
+      "min_dot_separation_factor": 1.4,
+      "placement_max_radius_frac": 0.82,
+      "severity_severe_probability": 0.5,
+      "mild": {
+        "_comment": "หัวระยะเริ่ม: จุดเล็กไม่กี่จุด กระจายเบาบาง",
+        "n_dots_min": 1,
+        "n_dots_max": 3,
+        "n_clusters": 1,
+        "cluster_spread_frac": 0.1
+      },
+      "severe": {
+        "_comment": "หัวที่เป็นเยอะ: หลายจุดเล็กเกาะกลุ่มหนาแน่นในหนึ่งหรือหลายกลุ่ม",
+        "n_dots_per_cluster_min": 5,
+        "n_dots_per_cluster_max": 10,
+        "n_clusters_min": 1,
+        "n_clusters_max": 3,
+        "cluster_spread_frac": 0.055
+      }
+    },
+    "hard_negative_blotch": {
+      "_comment": "Large blurry stain/bruise-like blob added to a SUBSET of NEGATIVE (compactdry=0) heads — not fungal, just a distractor blemish. Deliberately large + soft-edged so features must separate it from the small sharp fungal dots above. Also rolled once per head, applied consistently across its 4 views (a physical stain doesn't disappear with camera angle).",
+      "probability": 0.4,
+      "color": [
+        120,
+        90,
+        55
+      ],
+      "radius_frac_min": 0.05,
+      "radius_frac_max": 0.15,
+      "intensity_min": 60,
+      "intensity_max": 130,
+      "per_view_visibility_prob": 0.9
+    }
+  },
+  "blob_detection": {
+    "_comment": "Parameters for src/blob_features.py. Dual-scale masked-baseline detector: a FINE local baseline (window smaller than a stain, bigger than a dot) isolates high-frequency small-sharp anomalies; a COARSE baseline (window bigger than the largest stain) isolates the low-frequency brightening a stain/blotch causes. Both baselines are computed with ROI-masked normalized filtering so background just outside the ROI never leaks into the average near the edge.",
+    "fine_filter_size_px": 41,
+    "coarse_filter_size_px": 181,
+    "anomaly_std_k_fine": 3.0,
+    "anomaly_std_k_coarse": 2.2,
+    "min_abs_threshold_fine": 10,
+    "min_abs_threshold_coarse": 4,
+    "coarse_exclusion_dilate_px": 6,
+    "min_blob_area_px": 12,
+    "small_area_max_px": 500,
+    "large_area_min_px": 1200
+  },
+  "feature_extraction": {
+    "_comment": "Parameters for src/extract_features.py.",
+    "saturation_threshold": 250,
+    "area_anomaly_mad_k": 3.0,
+    "ndfi_eps": 1e-06,
+    "apply_auto_framing": true,
+    "_apply_auto_framing_why": "Must match what web/app.py does to uploads. The serving path re-frames every photo with onion_detect; computing training features from raw images instead created train/serve skew (sd_B 0.023 vs 0.036 on the same mock image)."
+  },
+  "train": {
+    "_comment": "Parameters for src/train.py. Report's pass/fail bar (accuracy_min/recall_min/kappa_min) is checked but is not meaningful on mock data — only real photos make it a real gate.",
+    "outer_n_splits": 5,
+    "inner_n_splits": 4,
+    "param_grid": [
+      {
+        "n_estimators": 200,
+        "max_depth": null,
+        "min_samples_leaf": 1
+      },
+      {
+        "n_estimators": 200,
+        "max_depth": 5,
+        "min_samples_leaf": 1
+      },
+      {
+        "n_estimators": 200,
+        "max_depth": null,
+        "min_samples_leaf": 2
+      },
+      {
+        "n_estimators": 400,
+        "max_depth": 5,
+        "min_samples_leaf": 2
+      },
+      {
+        "n_estimators": 400,
+        "max_depth": 10,
+        "min_samples_leaf": 1
+      }
+    ],
+    "accuracy_min": 0.8,
+    "recall_min": 0.8,
+    "kappa_min": 0.61,
+    "low_importance_watchlist": [
+      "NDFI_mean",
+      "NDFI_p95",
+      "NDFI_p05",
+      "A_low"
+    ]
+  },
+  "camera": {
+    "_comment": "Capture settings for src/camera.py (runs on the Pi). Shared by the web app AND by calibrate.py / capture_lock_test.py, which import load_config/open_camera/capture_frame from the same module.",
+    "device_path": "/dev/video0",
+    "width": 1280,
+    "height": 720,
+    "fourcc": "YUYV",
+    "warmup_frames": 8,
+    "warmup_note": "Frames read immediately after a control change still show the OLD settings; these are read and discarded so the first real capture reflects the locked values. Raise it if capture_lock_test.py reports stddev >= 1.0."
+  },
+  "controls": {
+    "_comment": "v4l2-ctl control names and values for THIS camera (names and ranges verified with `v4l2-ctl -d /dev/video0 --list-ctrls`). Applied by src/camera.py via v4l2-ctl, then read back and verified — cv2's cap.set() is silently ignored by many drivers. Every auto-adjustment is off on purpose: UV fluorescence intensity IS the measurement, so a camera that re-exposes or re-focuses between shots makes two identical onions produce different features.",
+    "_ranges": "auto_exposure 0-3 (1=Manual, 3=AperturePriority) | exposure_time_absolute 1-10000 | gain 0-128 | white_balance_temperature 2800-6500 | brightness -64..64 | contrast 0-100 | saturation 0-128 | gamma 100-500 | sharpness 0-100 | backlight_compensation 0-2 | focus_absolute 0-1000 | power_line_frequency 0-2 (1=50Hz)",
+    "_NEEDS_CALIBRATION": "exposure_time_absolute, gain and focus_absolute below are the camera's factory defaults, NOT calibrated values. Run calibrate.py and capture_lock_test.py against the real UV box and replace them before collecting any dataset.",
+    "auto_exposure": 1,
+    "white_balance_automatic": 0,
+    "focus_automatic_continuous": 0,
+    "exposure_dynamic_framerate": 0,
+    "exposure_time_absolute": 166,
+    "gain": 64,
+    "white_balance_temperature": 4600,
+    "focus_absolute": 120,
+    "brightness": 0,
+    "contrast": 36,
+    "saturation": 80,
+    "gamma": 300,
+    "sharpness": 76,
+    "backlight_compensation": 0,
+    "power_line_frequency": 1
+  },
+  "capture_sequence": {
+    "_comment": "Single UV frame per head. Was four angles; reduced to one, so the feature set no longer carries _viewmean/_viewmax pairs (with one view they are identical). To go back to multiple angles: add steps here AND set samples.n_views to match, then regenerate mock data and retrain — the feature names change with the view count.",
+    "steps": [
+      {
+        "id": "V1",
+        "kind": "uv",
+        "prompt": "ภาพหอมแดงใต้แสง UV (มุมเดียว)",
+        "button": "เลือกภาพ"
+      }
+    ],
+    "_full_protocol_example": [
+      {
+        "id": "V1",
+        "kind": "uv",
+        "prompt": "วางหอมแดงในกล่อง ปิดฝาให้สนิท เปิดไฟ UV แล้วกดถ่ายภาพ",
+        "button": "ถ่ายภาพมุมที่ 1"
+      },
+      {
+        "id": "V2",
+        "kind": "uv",
+        "prompt": "หมุนหอมแดง 90 องศา ปิดฝา แล้วกดถ่ายต่อ",
+        "button": "ถ่ายภาพมุมที่ 2"
+      },
+      {
+        "id": "V3",
+        "kind": "uv",
+        "prompt": "หมุนหอมแดงอีก 90 องศา ปิดฝา แล้วกดถ่ายต่อ",
+        "button": "ถ่ายภาพมุมที่ 3"
+      },
+      {
+        "id": "V4",
+        "kind": "uv",
+        "prompt": "หมุนหอมแดงอีก 90 องศา ปิดฝา แล้วกดถ่ายต่อ",
+        "button": "ถ่ายภาพมุมที่ 4"
+      },
+      {
+        "id": "DARK",
+        "kind": "dark",
+        "prompt": "ปิดไฟ UV โดยไม่ขยับหอมแดง แล้วกดถ่ายภาพมืด",
+        "button": "ถ่ายภาพมืด"
+      }
+    ],
+    "_dark_frame_note": "kind='dark' frames are captured and saved but NOT yet used by feature extraction — dark-frame subtraction is not implemented in extract_features.py. Adding the step alone will not change any prediction.",
+    "save_captures": true,
+    "preview": {
+      "_comment": "Uploaded photos are shown (normalized, no overlay) so the operator can check focus and framing before anything is classified.",
+      "jpeg_quality": 92
+    },
+    "upload": {
+      "_comment": "Phone-upload mode settings.",
+      "max_file_mb": 60,
+      "allowed_extensions": [
+        ".jpg",
+        ".jpeg",
+        ".png",
+        ".heic",
+        ".heif",
+        ".webp",
+        ".dng"
+      ],
+      "raw": {
+        "_comment": "DNG/RAW handling via rawpy. RAW is the better input for this measurement: the phone's JPEG pipeline applies noise reduction that is designed to erase small bright specks — which is exactly the fungal-dot signal — plus sharpening and tone mapping that vary per shot. RAW skips all of it.",
+        "no_auto_bright": true,
+        "_no_auto_bright_why": "MUST stay true. rawpy's auto-brightness rescales each file independently to look nice, which would make two identical onions produce different brightness features and destroy comparability across the dataset — the very thing locking the phone's exposure was for.",
+        "use_camera_wb": true,
+        "_use_camera_wb_why": "Uses the white balance recorded in the file. With Pro mode locked this is the same for every shot, so it is reproducible. Set false to fall back to a neutral fixed WB if the phone turns out to vary it.",
+        "output_bps": 8,
+        "min_preview_long_side_px": 1200,
+        "_min_preview_why": "Some DNGs (Lightroom smart previews, other lossy variants) hold no Bayer data and can only offer an embedded JPEG. That is accepted only if it is big enough to measure from — a thumbnail would silently give the pipeline less detail than a normal phone JPEG while still producing confident-looking numbers.",
+        "_output_bps_why": "8-bit sRGB output so DNG lands in exactly the same colour space as the JPEG path — the feature code applies an sRGB gamma decode, so feeding it linear data instead would double-decode and silently change every colour feature. Moving to linear 16-bit would be more physically correct but requires re-extracting features and retraining."
+      },
+      "exif_check": {
+        "_comment": "Photos must be shot in Pro/Manual mode with ISO, shutter and white balance LOCKED — otherwise the phone re-exposes between angles and the brightness features stop being comparable. EXIF is read from each upload and compared across the set; a mismatch means auto mode was on. This is a warning, not a block: EXIF may be absent (PNG, stripped metadata, some HEIC paths) and the operator may still have good reason to proceed.",
+        "enabled": true,
+        "compare_tags": [
+          "ISOSpeedRatings",
+          "ExposureTime",
+          "FNumber"
+        ]
+      }
+    }
+  }
+}

@@ -1,0 +1,24 @@
+feature,auc_raw,auc_effective,direction
+n_small_sharp_blobs,0.9666666666666667,0.9666666666666667,higher -> compactdry=1
+ratio_small_to_large,0.9666666666666667,0.9666666666666667,higher -> compactdry=1
+avg_small_blob_diam_px,0.9666666666666667,0.9666666666666667,higher -> compactdry=1
+cluster_density,0.9333333333333333,0.9333333333333333,higher -> compactdry=1
+texture,0.86,0.86,higher -> compactdry=1
+sd_G,0.8255555555555555,0.8255555555555555,higher -> compactdry=1
+sd_B,0.79,0.79,higher -> compactdry=1
+brightness_sd,0.7644444444444444,0.7644444444444444,higher -> compactdry=1
+F_p95,0.3155555555555556,0.6844444444444444,lower -> compactdry=1
+blob_max,0.6766666666666666,0.6766666666666666,higher -> compactdry=1
+sd_R,0.6744444444444444,0.6744444444444444,higher -> compactdry=1
+n_large_blotches,0.35,0.65,lower -> compactdry=1
+avg_large_blotch_diam_px,0.35,0.65,lower -> compactdry=1
+mean_G,0.37777777777777777,0.6222222222222222,lower -> compactdry=1
+NDFI_p95,0.4066666666666667,0.5933333333333333,lower -> compactdry=1
+A_high,0.5838888888888889,0.5838888888888889,higher -> compactdry=1
+NDFI_p05,0.41666666666666663,0.5833333333333334,lower -> compactdry=1
+NDFI_mean,0.42000000000000004,0.58,lower -> compactdry=1
+mean_R,0.44222222222222224,0.5577777777777777,lower -> compactdry=1
+brightness_mean,0.4466666666666667,0.5533333333333332,lower -> compactdry=1
+mean_B,0.5055555555555555,0.5055555555555555,higher -> compactdry=1
+F_p05,0.4955555555555555,0.5044444444444445,lower -> compactdry=1
+A_low,0.5,0.5,higher -> compactdry=1
