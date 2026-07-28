@@ -759,6 +759,17 @@ def predict_session():
     if overlay_uri is None:
         return jsonify({"error": "สร้างภาพ overlay ไม่สำเร็จ"}), 500
 
+    # The same frame WITHOUT the circles, so the operator can toggle the
+    # markings off and judge the fluorescence itself rather than only seeing
+    # what the detector decided to ring.
+    clean_uri = None
+    src = Path(result["overlay_source_path"])
+    if src.exists():
+        clean_img = cv2.imread(str(src))
+        if clean_img is not None:
+            clean_uri = _jpeg_data_uri(
+                clean_img, cfg["capture_sequence"]["preview"].get("jpeg_quality", 92))
+
     label = result["label"]
     expected = cfg["samples"]["n_views"]
     exif_report = check_exif_consistency(uv, cfg)
@@ -777,6 +788,7 @@ def predict_session():
         "confidence_pct": round(result["confidence"] * 100, 1),
         "processing_time": round(result["processing_time"], 2),
         "overlay_image": overlay_uri,
+        "clean_image": clean_uri,
         "overlay_source": Path(result["overlay_source_path"]).name,
         "n_small_blobs": result["features"].get("n_small_sharp_blobs_viewmax", 0),
         "n_large_blotches": result["features"].get("n_large_blotches_viewmax", 0),

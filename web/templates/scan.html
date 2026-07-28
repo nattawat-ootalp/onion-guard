@@ -4,221 +4,221 @@
 {% block content %}
 <div class="pagehead">
   <h2>สแกนตัวอย่าง</h2>
-  <p>ถ่ายภาพหอมแดงใต้แสง UV 365 นาโนเมตร ด้วยมือถือ {{ total_steps }} มุม แล้วอัปโหลดเพื่อคัดกรองเบื้องต้น</p>
+  <p>ถ่ายภาพหอมแดงใต้แสง UV 365 นาโนเมตร ด้วยมือถือ แล้วอัปโหลดเพื่อคัดกรองเบื้องต้น</p>
 </div>
 
-<div class="camerabar camerabar-info">
-  <span class="camerabar-tag">วิธีถ่าย</span>
-  <span>
-    ใช้แอปกล้องมือถือใน <strong>โหมด Pro / Manual</strong> ล็อก ISO, ความเร็วชัตเตอร์ และ White Balance ให้เท่ากันทุกมุม
-    <strong>ปิด HDR และโหมดกลางคืน</strong> วางมือถือบนจิ๊กให้ระยะคงที่ แล้วถ่ายให้หัวหอมอยู่กลางกรอบ
-  </span>
-</div>
+<!-- ขั้นที่ 1: ยังไม่ได้เลือกไฟล์ -->
+<div id="stage-upload">
+  <div class="camerabar camerabar-info">
+    <span class="camerabar-tag">วิธีถ่าย</span>
+    <span>
+      ใช้แอปกล้องมือถือใน <strong>โหมด Pro / Manual</strong> ล็อก ISO, ความเร็วชัตเตอร์ และ White Balance
+      <strong>ปิด HDR และโหมดกลางคืน</strong> วางมือถือให้ระยะคงที่ ถ่ายให้หัวหอมอยู่กลางกรอบ
+    </span>
+  </div>
 
-<div class="panel" id="upload-panel">
-  <h3 class="panel-title">เลือกภาพ {{ total_steps }} มุม</h3>
+  <div class="panel">
+    <h3 class="panel-title">เลือกภาพ {{ total_steps }} มุม</h3>
+    <p class="stepprompt">เลือกไฟล์ภาพหอมแดง 1 หัว ที่ถ่ายใต้แสง UV</p>
 
-  <p class="stepcount" id="step-count">ยังไม่ได้เลือกภาพ</p>
-  <p class="stepprompt" id="step-prompt">เลือกภาพได้ทีเดียวทั้ง {{ total_steps }} มุม (เรียงตามลำดับมุมที่ 1 → {{ total_steps }}) หรือจะเลือกทีละมุมก็ได้</p>
-
-  <div class="steplist" id="step-list">
-    {% for s in steps %}
-    <div class="steprow" data-step="{{ s.id }}">
-      <span class="steprow-id">{{ s.id }}</span>
-      <span class="steprow-prompt">{{ s.prompt }}</span>
-      <span class="steprow-state" data-state="pending">รอ</span>
+    <div class="field">
+      <label class="field-label" for="images">ไฟล์ภาพ</label>
+      <input type="file" id="images" accept="image/*,.dng" multiple>
+      <p class="field-hint">
+        รองรับ <strong>DNG (RAW)</strong> · JPEG · PNG
+        <br>แนะนำ DNG มากที่สุด เพราะไม่ผ่าน noise reduction ของมือถือ ซึ่งจะลบจุดเรืองแสงเล็ก ๆ ทิ้ง
+      </p>
     </div>
-    {% endfor %}
-  </div>
 
-  <div class="field" style="margin-top:18px;">
-    <label class="field-label" for="images">ไฟล์ภาพ</label>
-    <input type="file" id="images" accept="image/*,.dng" multiple>
-    <p class="field-hint">
-      รองรับ <strong>DNG (RAW)</strong> · JPEG · PNG — เลือกจากแกลเลอรี/ไฟล์ได้
-      <br>แนะนำ DNG มากที่สุด เพราะไม่ผ่าน noise reduction ของมือถือ ซึ่งจะลบจุดเรืองแสงเล็ก ๆ ทิ้ง
-    </p>
-  </div>
-
-  <div class="capture-actions">
-    <button type="button" class="btn btn-capture" id="upload-btn" disabled>อัปโหลด</button>
-    <button type="button" class="btn btn-secondary hidden" id="reset-btn">เริ่มใหม่</button>
-    <span class="statustext" id="status-text"></span>
+    <div class="capture-actions">
+      <button type="button" class="btn btn-capture" id="upload-btn" disabled>อัปโหลด</button>
+      <span class="statustext" id="status-text"></span>
+    </div>
   </div>
 </div>
 
-<div class="panel hidden" id="preview-panel">
+<!-- ขั้นที่ 2: ตรวจสอบภาพก่อนประมวลผล -->
+<div class="panel hidden" id="stage-review">
   <h3 class="panel-title">ตรวจสอบภาพก่อนประมวลผล</h3>
-  <p class="previewhint">ระบบหาตำแหน่งหัวหอมอัตโนมัติ แล้วครอบ+ย่อให้หัวหอมอยู่กลางกรอบขนาดเท่ากันทุกภาพ — ตรวจว่าคมชัดและเห็นครบทั้งหัว</p>
+  <p class="previewhint">ระบบหาตำแหน่งหัวหอมอัตโนมัติ แล้วครอบ+ย่อให้อยู่กลางกรอบขนาดเท่ากันทุกภาพ — ตรวจว่าคมชัดและเห็นครบทั้งหัว</p>
   <div id="framing-warning" class="warnbox hidden"></div>
   <div class="previewgrid" id="preview-grid"></div>
 
-  <div class="capture-actions" style="margin-top:18px;">
-    <button type="button" class="btn btn-capture" id="predict-btn">ประมวลผล</button>
-    <button type="button" class="btn btn-secondary btn-retake" id="retake-btn">เลือกภาพสุดท้ายใหม่</button>
+  <div class="capture-actions" style="margin-top:20px;">
+    <button type="button" class="btn btn-capture" id="proceed-btn">ดำเนินการต่อ</button>
+    <button type="button" class="btn btn-secondary btn-retake" id="cancel-btn">ยกเลิก</button>
+    <span class="statustext" id="review-status"></span>
+  </div>
+</div>
+
+<!-- ขั้นที่ 3: ผลลัพธ์ -->
+<div class="hidden" id="stage-result">
+  <div class="resultlayout">
+
+    <div class="panel resultlayout-image">
+      <h3 class="panel-title">ภาพผลการตรวจ</h3>
+      <figure class="overlay-figure">
+        <img id="result-img" alt="ภาพผลการตรวจจับ">
+        <figcaption id="result-caption"></figcaption>
+      </figure>
+      <div class="capture-actions" style="margin-top:14px;">
+        <button type="button" class="btn btn-secondary" id="toggle-btn">ซ่อนวงจุดที่ตรวจพบ</button>
+      </div>
+    </div>
+
+    <div class="panel resultlayout-info">
+      <h3 class="panel-title">ผลการคัดกรอง</h3>
+
+      <div class="result-headline">
+        <p class="result-label" id="result-label"></p>
+      </div>
+
+      <div class="result-figures">
+        <div class="figure-block">
+          <p class="figure-label">ความมั่นใจ</p>
+          <p class="figure-value" id="result-confidence"></p>
+        </div>
+        <div class="figure-block">
+          <p class="figure-label">เวลาประมวลผล</p>
+          <p class="figure-value" id="result-time"></p>
+        </div>
+        <div class="figure-block">
+          <p class="figure-label">จุดเล็กคมชัดที่ตรวจพบ</p>
+          <p class="figure-value" id="result-blobs"></p>
+        </div>
+      </div>
+
+      <div id="exif-box" class="hidden"></div>
+      <div id="partial-warning" class="warnbox hidden"></div>
+      <div class="notebox" id="result-disclaimer"></div>
+    </div>
+
+  </div>
+
+  <div class="restart-row">
+    <button type="button" class="btn btn-capture" id="restart-btn">เริ่มใหม่</button>
   </div>
 </div>
 
 <div id="error-panel" class="panel hidden">
   <div class="errorbox" id="error-text"></div>
 </div>
-
-<div id="result-panel" class="panel hidden">
-  <h3 class="panel-title">ผลการคัดกรอง</h3>
-
-  <div class="result-headline">
-    <p class="result-label" id="result-label"></p>
-  </div>
-
-  <div class="result-figures">
-    <div class="figure-block">
-      <p class="figure-label">ความมั่นใจ</p>
-      <p class="figure-value" id="result-confidence"></p>
-    </div>
-    <div class="figure-block">
-      <p class="figure-label">เวลาประมวลผล</p>
-      <p class="figure-value" id="result-time"></p>
-    </div>
-    <div class="figure-block">
-      <p class="figure-label">จุดเล็กคมชัดที่ตรวจพบ</p>
-      <p class="figure-value" id="result-blobs"></p>
-    </div>
-  </div>
-
-  <div id="exif-box" class="hidden"></div>
-  <div id="partial-warning" class="warnbox hidden"></div>
-
-  <div style="margin-top:24px;">
-    <figure class="overlay-figure">
-      <img id="result-overlay" alt="ภาพ overlay แสดงตำแหน่งจุดที่ตรวจพบ">
-      <figcaption id="result-overlay-caption"></figcaption>
-    </figure>
-  </div>
-
-  <div class="notebox" id="result-disclaimer"></div>
-</div>
 {% endblock %}
 
 {% block scripts %}
 <script>
 (function () {
+  const stageUpload = document.getElementById('stage-upload');
+  const stageReview = document.getElementById('stage-review');
+  const stageResult = document.getElementById('stage-result');
+
   const input = document.getElementById('images');
   const uploadBtn = document.getElementById('upload-btn');
-  const predictBtn = document.getElementById('predict-btn');
-  const retakeBtn = document.getElementById('retake-btn');
-  const resetBtn = document.getElementById('reset-btn');
+  const proceedBtn = document.getElementById('proceed-btn');
+  const cancelBtn = document.getElementById('cancel-btn');
+  const restartBtn = document.getElementById('restart-btn');
+  const toggleBtn = document.getElementById('toggle-btn');
+
   const statusText = document.getElementById('status-text');
-  const stepCount = document.getElementById('step-count');
-  const stepPrompt = document.getElementById('step-prompt');
-  const previewPanel = document.getElementById('preview-panel');
+  const reviewStatus = document.getElementById('review-status');
   const previewGrid = document.getElementById('preview-grid');
-  const resultPanel = document.getElementById('result-panel');
   const errorPanel = document.getElementById('error-panel');
   const errorText = document.getElementById('error-text');
+  const resultImg = document.getElementById('result-img');
+  const resultCaption = document.getElementById('result-caption');
 
   const TOTAL = {{ total_steps }};
   let sessionId = null;
   let busy = false;
-  let doneCount = 0;
+  let images = { overlay: null, clean: null };
+  let showingOverlay = true;
 
   function showError(m) { errorText.textContent = m; errorPanel.classList.remove('hidden'); }
   function clearError() { errorPanel.classList.add('hidden'); }
 
-  function setBusy(on, msg) {
-    busy = on;
-    uploadBtn.disabled = on || !(input.files && input.files.length);
-    predictBtn.disabled = on;
-    retakeBtn.disabled = on;
-    statusText.textContent = msg || '';
+  function setStage(name) {
+    stageUpload.classList.toggle('hidden', name !== 'upload');
+    stageReview.classList.toggle('hidden', name !== 'review');
+    stageResult.classList.toggle('hidden', name !== 'result');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
-  function markStep(id, state, label) {
-    const row = document.querySelector('.steprow[data-step="' + id + '"] .steprow-state');
-    if (row) { row.dataset.state = state; row.textContent = label; }
+  function setBusy(on, el, msg) {
+    busy = on;
+    uploadBtn.disabled = on || !(input.files && input.files.length);
+    proceedBtn.disabled = on;
+    cancelBtn.disabled = on;
+    if (el) el.textContent = msg || '';
   }
 
   input.addEventListener('change', function () {
     uploadBtn.disabled = !(input.files && input.files.length);
   });
 
-  function addPreview(item) {
-    const fig = document.createElement('figure');
-    fig.style.margin = '0';
-    const img = document.createElement('img');
-    img.src = item.preview;
-    img.alt = 'ภาพมุม ' + item.id;
-    const cap = document.createElement('figcaption');
-    cap.textContent = item.id;
-    fig.appendChild(img); fig.appendChild(cap);
-    previewGrid.appendChild(fig);
-    previewGrid.dataset.count = previewGrid.children.length;
-  }
-
-  function doUpload(isRetake) {
+  // ---- ขั้น 1 -> 2 : อัปโหลดแล้วไปหน้าตรวจสอบ ----
+  uploadBtn.addEventListener('click', function () {
+    if (busy) return;
     const files = Array.from(input.files || []);
     if (!files.length) { showError('ยังไม่ได้เลือกไฟล์'); return; }
+    if (files.length > TOTAL) {
+      showError('เลือกได้สูงสุด ' + TOTAL + ' ไฟล์ (เลือกมา ' + files.length + ')');
+      return;
+    }
 
     clearError();
-    setBusy(true, isRetake ? 'กำลังอัปโหลดใหม่...' : 'กำลังอัปโหลด...');
+    setBusy(true, statusText, 'กำลังอัปโหลด...');
 
     const fd = new FormData();
     files.forEach(function (f) { fd.append('images', f); });
     if (sessionId) fd.append('session_id', sessionId);
-    if (isRetake) fd.append('retake', 'true');
 
     fetch('/capture', { method: 'POST', body: fd })
       .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, data: d }; }); })
       .then(function (res) {
-        if (!res.ok) { showError(res.data.error || 'อัปโหลดไม่สำเร็จ'); setBusy(false, ''); return; }
+        if (!res.ok) { showError(res.data.error || 'อัปโหลดไม่สำเร็จ'); setBusy(false, statusText, ''); return; }
         const d = res.data;
         sessionId = d.session_id;
 
-        if (isRetake && previewGrid.lastChild) previewGrid.removeChild(previewGrid.lastChild);
-
-        const framingIssues = [];
+        previewGrid.innerHTML = '';
+        const issues = [];
         d.accepted.forEach(function (item) {
-          addPreview(item);
-          markStep(item.id, 'done', 'เลือกแล้ว');
-          (item.warnings || []).forEach(function (w) { framingIssues.push(item.id + ': ' + w); });
+          const fig = document.createElement('figure');
+          fig.style.margin = '0';
+          const img = document.createElement('img');
+          img.src = item.preview;
+          img.alt = 'ภาพ ' + item.id;
+          const cap = document.createElement('figcaption');
+          cap.textContent = item.id;
+          fig.appendChild(img); fig.appendChild(cap);
+          previewGrid.appendChild(fig);
+          (item.warnings || []).forEach(function (w) { issues.push(item.id + ': ' + w); });
         });
+        previewGrid.dataset.count = previewGrid.children.length;
+
         const fw = document.getElementById('framing-warning');
-        if (framingIssues.length) {
-          fw.innerHTML = '<strong>ปัญหาการจัดกรอบภาพ:</strong><br>· ' + framingIssues.join('<br>· ');
+        if (issues.length) {
+          fw.innerHTML = '<strong>ปัญหาการจัดกรอบภาพ:</strong><br>· ' + issues.join('<br>· ');
           fw.classList.remove('hidden');
         } else { fw.classList.add('hidden'); }
-        doneCount = document.querySelectorAll('.steprow-state[data-state="done"]').length;
 
-        stepCount.textContent = 'เลือกแล้ว ' + doneCount + ' จาก ' + TOTAL + ' มุม';
-        previewPanel.classList.remove('hidden');
-        input.value = '';
-
-        if (d.all_captured) {
-          stepPrompt.textContent = 'ครบทุกมุมแล้ว กด “ประมวลผล” เพื่อคัดกรอง';
-          uploadBtn.classList.add('hidden');
-          predictBtn.classList.remove('hidden');
-        } else {
-          stepPrompt.textContent = 'ต่อไป: ' + d.next_step.prompt;
-        }
-        setBusy(false, '');
+        setBusy(false, statusText, '');
+        setStage('review');
       })
-      .catch(function (e) { showError('เชื่อมต่อไม่สำเร็จ: ' + e.message); setBusy(false, ''); });
-  }
-
-  uploadBtn.addEventListener('click', function () { if (!busy) doUpload(false); });
-
-  retakeBtn.addEventListener('click', function () {
-    if (busy) return;
-    if (!input.files || !input.files.length) {
-      showError('เลือกไฟล์ใหม่ก่อน แล้วจึงกด “เลือกภาพสุดท้ายใหม่”');
-      return;
-    }
-    doUpload(true);
+      .catch(function (e) { showError('เชื่อมต่อไม่สำเร็จ: ' + e.message); setBusy(false, statusText, ''); });
   });
 
-  predictBtn.addEventListener('click', function () {
+  // ---- ขั้น 2 : ยกเลิก -> กลับไปขั้น 1 ----
+  cancelBtn.addEventListener('click', function () {
+    if (busy) return;
+    resetAll();
+  });
+
+  // ---- ขั้น 2 -> 3 : ประมวลผล ----
+  proceedBtn.addEventListener('click', function () {
     if (busy) return;
     clearError();
-    setBusy(true, 'กำลังประมวลผล...');
+    setBusy(true, reviewStatus, 'กำลังประมวลผล...');
+
     fetch('/predict-session', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -226,20 +226,42 @@
     })
       .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, data: d }; }); })
       .then(function (res) {
-        if (!res.ok) { showError(res.data.error || 'ประมวลผลไม่สำเร็จ'); return; }
+        if (!res.ok) { showError(res.data.error || 'ประมวลผลไม่สำเร็จ'); setBusy(false, reviewStatus, ''); return; }
         renderResult(res.data);
+        setBusy(false, reviewStatus, '');
+        setStage('result');
       })
-      .catch(function (e) { showError('เชื่อมต่อไม่สำเร็จ: ' + e.message); })
-      .finally(function () {
-        setBusy(false, '');
-        predictBtn.classList.add('hidden');
-        retakeBtn.classList.add('hidden');
-        resetBtn.classList.remove('hidden');
-      });
+      .catch(function (e) { showError('เชื่อมต่อไม่สำเร็จ: ' + e.message); setBusy(false, reviewStatus, ''); });
+  });
+
+  // ---- สลับภาพวงจุด / ไม่วงจุด ----
+  function applyImage() {
+    if (showingOverlay) {
+      resultImg.src = images.overlay;
+      toggleBtn.textContent = 'ซ่อนวงจุดที่ตรวจพบ';
+      resultCaption.textContent =
+        'วงสีเหลือง = จุดเล็กขอบคมที่ตรวจพบ · วงสีม่วงแดง = ปื้นขนาดใหญ่ขอบเบลอ';
+    } else {
+      resultImg.src = images.clean || images.overlay;
+      toggleBtn.textContent = 'แสดงวงจุดที่ตรวจพบ';
+      resultCaption.textContent = images.clean
+        ? 'ภาพต้นฉบับที่ครอบแล้ว ยังไม่ได้วงจุด'
+        : 'ไม่มีภาพต้นฉบับสำรอง';
+    }
+  }
+  toggleBtn.addEventListener('click', function () {
+    showingOverlay = !showingOverlay;
+    applyImage();
   });
 
   function renderResult(d) {
     const isFound = d.label === 1;
+
+    images.overlay = d.overlay_image;
+    images.clean = d.clean_image;
+    showingOverlay = true;
+    applyImage();
+    toggleBtn.disabled = !d.clean_image;
 
     const labelEl = document.getElementById('result-label');
     labelEl.textContent = d.label_text;
@@ -253,22 +275,19 @@
       d.processing_time.toFixed(2) + '<span class="figure-unit"> วินาที</span>';
     document.getElementById('result-blobs').textContent = d.n_small_blobs;
 
-    // Exposure-lock verdict. EXIF is preferred, but many Android camera apps
-    // write no exposure tags at all, so the background-brightness comparison
-    // is the fallback that actually works on those phones.
+    // ความคงที่ของค่ากล้อง
     const ex = document.getElementById('exif-box');
     const parts = [];
     let worst = 'consistent';
-    if (d.exif_check && d.exif_check.status && d.exif_check.status !== 'disabled') {
+    const SKIP = ['disabled', 'not_applicable'];
+    if (d.exif_check && !SKIP.includes(d.exif_check.status)) {
       parts.push('EXIF: ' + d.exif_check.message);
       if (d.exif_check.status === 'inconsistent') worst = 'inconsistent';
       else if (d.exif_check.status === 'unknown' && worst === 'consistent') worst = 'unknown';
     }
-    const SKIP = ['disabled', 'not_applicable'];
     if (d.background_check && !SKIP.includes(d.background_check.status)) {
       parts.push('พื้นหลัง: ' + d.background_check.message);
       if (d.background_check.status === 'inconsistent') worst = 'inconsistent';
-      else if (d.background_check.status === 'unknown' && worst === 'consistent') worst = 'unknown';
     }
     if (d.scale_check && !SKIP.includes(d.scale_check.status)) {
       parts.push('ขนาดระหว่างมุม: ' + d.scale_check.message);
@@ -276,20 +295,19 @@
     }
     if (d.framing_failed_views && d.framing_failed_views.length) {
       parts.push('หาตำแหน่งหัวหอมไม่สำเร็จในมุม ' + d.framing_failed_views.join(', ') +
-                 ' — ใช้กรอบกลางภาพแทน ผลอาจคลาดเคลื่อน');
+                 ' — ใช้กรอบกลางภาพแทน');
       worst = 'inconsistent';
     }
     if (parts.length) {
       ex.className = (worst === 'consistent') ? 'okbox' : 'warnbox';
-      ex.innerHTML = '<strong>ความคงที่ของค่ากล้องระหว่างมุม:</strong><br>· ' + parts.join('<br>· ');
+      ex.innerHTML = '<strong>ความคงที่ของค่ากล้อง:</strong><br>· ' + parts.join('<br>· ');
       ex.classList.remove('hidden');
     } else { ex.classList.add('hidden'); }
 
+    // ข้อจำกัดของผล
     const warn = document.getElementById('partial-warning');
     const notes = [];
-    if (d.ood_check && d.ood_check.status === 'out_of_range') {
-      notes.push(d.ood_check.message);
-    }
+    if (d.ood_check && d.ood_check.status === 'out_of_range') notes.push(d.ood_check.message);
     if (d.borderline) {
       notes.push('ผลนี้ก้ำกึ่ง — โมเดลให้ความน่าจะเป็นฝั่ง “พบ” ที่ ' +
         (d.proba_positive * 100).toFixed(1) + '% ซึ่งเอนไปทางพบ แต่ยังไม่ถึงเกณฑ์ ' +
@@ -297,44 +315,30 @@
     }
     if (d.partial_views) {
       notes.push('ใช้ภาพเพียง ' + d.n_views_used + ' มุม แต่โมเดลฝึกด้วย ' +
-        d.expected_views + ' มุมต่อหัว ค่าความมั่นใจจึงยังไม่น่าเชื่อถือเท่าถ่ายครบ');
+        d.expected_views + ' มุมต่อหัว');
     }
-    if (d.is_mock_data) {
-      notes.push('โมเดลปัจจุบันฝึกจากข้อมูลจำลอง ยังไม่ได้ฝึกด้วยภาพจริง');
-    }
+    if (d.is_mock_data) notes.push('โมเดลปัจจุบันฝึกจากข้อมูลจำลอง ยังไม่ได้ฝึกด้วยภาพจริง');
     if (notes.length) {
       warn.innerHTML = '<strong>ข้อจำกัดของผลนี้:</strong><br>· ' + notes.join('<br>· ');
       warn.classList.remove('hidden');
     } else { warn.classList.add('hidden'); }
 
-    document.getElementById('result-overlay').src = d.overlay_image;
-    document.getElementById('result-overlay-caption').textContent =
-      'วงสีเหลือง = จุดเล็กขอบคมที่ตรวจพบ · วงสีม่วงแดง = ปื้นขนาดใหญ่ขอบเบลอ';
     document.getElementById('result-disclaimer').textContent = d.disclaimer;
-
-    resultPanel.classList.remove('hidden');
-    resultPanel.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
-  resetBtn.addEventListener('click', function () {
-    sessionId = null; doneCount = 0;
+  // ---- เริ่มใหม่ ----
+  function resetAll() {
+    sessionId = null;
+    images = { overlay: null, clean: null };
+    showingOverlay = true;
     previewGrid.innerHTML = '';
-    previewPanel.classList.add('hidden');
-    resultPanel.classList.add('hidden');
-    clearError();
-    document.querySelectorAll('.steprow-state').forEach(function (el) {
-      el.dataset.state = 'pending'; el.textContent = 'รอ';
-    });
-    stepCount.textContent = 'ยังไม่ได้เลือกภาพ';
-    stepPrompt.textContent = 'เลือกภาพได้ทีเดียวทั้ง ' + TOTAL + ' มุม หรือทีละมุม';
     input.value = '';
-    uploadBtn.classList.remove('hidden');
     uploadBtn.disabled = true;
-    predictBtn.classList.add('hidden');
-    retakeBtn.classList.remove('hidden');
-    resetBtn.classList.add('hidden');
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  });
+    clearError();
+    document.getElementById('framing-warning').classList.add('hidden');
+    setStage('upload');
+  }
+  restartBtn.addEventListener('click', resetAll);
 })();
 </script>
 {% endblock %}

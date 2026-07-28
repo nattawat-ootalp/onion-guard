@@ -319,6 +319,26 @@ input[type="file"]:focus, input[type="search"]:focus, select:focus {
 
 .spinner-text { color: var(--ink-muted); font-size: 0.92rem; }
 
+/* ---------------------------------------------------------- result layout */
+
+/* Image left, readings right, restart centred underneath. Collapses to one
+   column on narrow screens so the phone stays usable at the box. */
+.resultlayout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 22px;
+  align-items: start;
+}
+.resultlayout .panel { margin-bottom: 0; }
+.resultlayout-image img { width: 100%; height: auto; display: block; }
+
+.restart-row { display: flex; justify-content: center; margin: 24px 0 8px; }
+.restart-row .btn { min-width: 220px; }
+
+@media (max-width: 860px) {
+  .resultlayout { grid-template-columns: 1fr; }
+}
+
 /* ---------------------------------------------------------- report figures */
 
 .report-figure { margin: 0; }
