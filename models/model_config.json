@@ -23,7 +23,8 @@
     "avg_small_blob_diam_px",
     "avg_large_blotch_diam_px",
     "cluster_density",
-    "ratio_small_to_large"
+    "ratio_small_to_large",
+    "uv_exclusive_dot_frac"
   ],
   "training_feature_ranges": {
     "mean_R": {
@@ -163,10 +164,16 @@
       "max": 0.9999999444444476,
       "p05": 0.0,
       "p95": 0.9999999285714336
+    },
+    "uv_exclusive_dot_frac": {
+      "min": -1.0,
+      "max": -1.0,
+      "p05": -1.0,
+      "p95": -1.0
     }
   },
   "_ranges_note": "min/max/p05/p95 of each feature across the training set. Used at predict time to detect out-of-distribution input, which a Random Forest cannot signal on its own.",
-  "decision_threshold": 0.7313432835820896,
+  "decision_threshold": 0.7014925373134329,
   "random_seed": 42,
   "best_params": {
     "n_estimators": 200,

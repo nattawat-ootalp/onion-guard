@@ -48,7 +48,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))
 
 from data_source import get_data_source, TABLE_FEATURE_COLUMNS  # noqa: E402
-from onion_detect import detect_onion, normalize_to_onion  # noqa: E402
+from onion_detect import detect_onion, detect_onion_visible, normalize_to_onion  # noqa: E402
 import predict as predict_mod  # noqa: E402
 
 try:
@@ -276,7 +276,7 @@ def _raw_embedded_preview(raw, rc):
     return cv2.cvtColor(arr, cv2.COLOR_BGR2RGB)
 
 
-def load_upload_to_bgr(file_storage, cfg):
+def load_upload_to_bgr(file_storage, cfg, kind="uv"):
     """Uploaded file -> (re-framed BGR array, exif dict, framing info, bg_level).
 
     Opened through Pillow so the EXIF orientation flag is applied; cv2 would
@@ -284,9 +284,19 @@ def load_upload_to_bgr(file_storage, cfg):
     the frame re-cropped so it is centred at a fixed scale — see
     src/onion_detect.py for why that matters more than it sounds.
 
+    kind selects the detector: "uv" frames key off red/green against a
+    blue-only UV background, "visible" frames key off brightness against an
+    ordinary-lit background — see onion_detect.detect_onion_visible for why
+    they need different logic. No explicit alignment step is done between the
+    two; both are independently centred/scaled around their own detected
+    onion, which lines them up well enough in practice (verified against a
+    real photo pair).
+
     bg_level is the median luminance OUTSIDE the onion, captured before
     re-framing. Comparing it across angles is how exposure drift is caught on
-    phones that write no EXIF exposure data.
+    phones that write no EXIF exposure data. Only meaningful for kind="uv"
+    frames (a lit background has no such fixed baseline), but computed either
+    way since it's cheap and callers filter by kind before comparing.
     """
     data = file_storage.read()
     ext = Path(file_storage.filename or "").suffix.lower()
@@ -311,11 +321,18 @@ def load_upload_to_bgr(file_storage, cfg):
 
     od = cfg["onion_detect"]
     sanity = od.get("sanity", {})
-    detection = detect_onion(
-        bgr, k=od["detect_k"], min_area_frac=od["min_area_frac"],
-        min_radius_frac=sanity.get("min_radius_frac_of_frame"),
-        max_radius_frac=sanity.get("max_radius_frac_of_frame"),
-    )
+    if kind == "visible":
+        detection = detect_onion_visible(
+            bgr, k=od["visible_light_detect_k"], min_area_frac=od["min_area_frac"],
+            min_radius_frac=sanity.get("min_radius_frac_of_frame"),
+            max_radius_frac=sanity.get("max_radius_frac_of_frame"),
+        )
+    else:
+        detection = detect_onion(
+            bgr, k=od["detect_k"], min_area_frac=od["min_area_frac"],
+            min_radius_frac=sanity.get("min_radius_frac_of_frame"),
+            max_radius_frac=sanity.get("max_radius_frac_of_frame"),
+        )
     mask, _, _, info = detection
 
     gray = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY)
@@ -746,7 +763,7 @@ def capture():
 
         step = steps[session["step_index"]]
         try:
-            frame, exif, info, bg_level = load_upload_to_bgr(f, cfg)
+            frame, exif, info, bg_level = load_upload_to_bgr(f, cfg, kind=step.get("kind", "uv"))
         except ValueError as exc:
             return jsonify({"error": str(exc)}), 400
 
@@ -862,7 +879,10 @@ def predict_session():
 
     # Only UV frames go to the classifier. Dark frames (if the protocol adds
     # them) are kept but NOT used — dark-frame subtraction is not implemented.
+    # The visible-light frame (if any) is NOT a UV angle either — it never
+    # feeds predict_head as a primary image, only as the optional cross-check.
     uv = [c for c in session["captured"] if c["kind"] == "uv"]
+    visible = [c for c in session["captured"] if c["kind"] == "visible"]
     if not uv:
         return jsonify({"error": "ยังไม่มีภาพ UV ในเซสชันนี้"}), 400
 
@@ -870,10 +890,12 @@ def predict_session():
     paths = [c["path"] for c in uv if c["path"]]
     if len(paths) != len(uv):
         return jsonify({"error": "การบันทึกภาพไม่ครบ กรุณาเปิด save_captures ใน config"}), 500
+    visible_path = visible[0]["path"] if visible and visible[0].get("path") else None
 
     try:
         with _lock:
-            result = predict_mod.predict_head(paths, model=model, cfg=cfg, model_cfg=model_cfg)
+            result = predict_mod.predict_head(paths, model=model, cfg=cfg, model_cfg=model_cfg,
+                                              visible_image_path=visible_path)
     except Exception as exc:  # noqa: BLE001
         return jsonify({"error": f"ประมวลผลไม่สำเร็จ: {exc}"}), 500
 

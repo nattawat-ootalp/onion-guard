@@ -45,37 +45,16 @@ def _background_stats(img_bgr, border_frac=0.06):
     return border.mean(axis=0), border.std(axis=0)
 
 
-def detect_onion(img_bgr, k=4.0, min_area_frac=0.005,
-                  min_radius_frac=None, max_radius_frac=None):
-    """Return (mask, (cx, cy), radius, info).
-
-    radius is half the longer side of the object's bounding box, so an onion
-    with a papery tail is still fully enclosed. info carries diagnostics and
-    an `ok` flag; callers must handle ok=False rather than trusting the
-    geometry, because a failed detection would silently mis-crop every
-    downstream measurement.
-
-    min_radius_frac / max_radius_frac bound the plausible onion size as a
-    fraction of the half-frame. A detection outside them means the segmenter
-    latched onto something else (a speck, or the whole lit background), so it
-    is reported as a failure and the caller falls back to a centred crop.
-    """
-    h, w = img_bgr.shape[:2]
-    b, g, r = [img_bgr[:, :, i].astype(np.float32) for i in range(3)]
-    bg_mean, bg_std = _background_stats(img_bgr)
-
-    # Background is blue-only, so the onion announces itself in red/green.
-    thr_r = bg_mean[2] + k * max(bg_std[2], 1.0)
-    thr_g = bg_mean[1] + k * max(bg_std[1], 1.0)
-    mask = ((r > thr_r) | (g > thr_g)).astype(np.uint8)
-
+def _largest_component_to_detection(mask, h, w, min_area_frac, min_radius_frac, max_radius_frac, info):
+    """Shared finish for both detectors: pick the largest blob, validate its
+    size, build the (mask, centre, radius, info) tuple normalize_to_onion
+    expects. Splitting this out means the UV and visible-light detectors only
+    differ in how `mask` gets built, not in how it gets validated."""
     scale = max(3, int(round(min(h, w) * 0.012)) | 1)  # odd kernel, scales with frame
     mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, np.ones((scale * 2 + 1,) * 2, np.uint8))
     mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, np.ones((scale,) * 2, np.uint8))
 
     n, labels, stats, cents = cv2.connectedComponentsWithStats(mask, 8)
-    info = {"threshold_r": float(thr_r), "threshold_g": float(thr_g),
-            "bg_mean_bgr": [float(v) for v in bg_mean]}
     if n <= 1:
         info.update({"ok": False, "reason": "ไม่พบวัตถุที่แยกจากพื้นหลังได้"})
         return mask.astype(bool), (w / 2, h / 2), min(h, w) * 0.4, info
@@ -123,6 +102,77 @@ def detect_onion(img_bgr, k=4.0, min_area_frac=0.005,
         return obj, (w / 2, h / 2), min(h, w) * 0.4, info
 
     return obj, (cx, cy), radius, info
+
+
+def detect_onion(img_bgr, k=4.0, min_area_frac=0.005,
+                  min_radius_frac=None, max_radius_frac=None):
+    """Return (mask, (cx, cy), radius, info) for a UV-lit frame.
+
+    radius is half the longer side of the object's bounding box, so an onion
+    with a papery tail is still fully enclosed. info carries diagnostics and
+    an `ok` flag; callers must handle ok=False rather than trusting the
+    geometry, because a failed detection would silently mis-crop every
+    downstream measurement.
+
+    min_radius_frac / max_radius_frac bound the plausible onion size as a
+    fraction of the half-frame. A detection outside them means the segmenter
+    latched onto something else (a speck, or the whole lit background), so it
+    is reported as a failure and the caller falls back to a centred crop.
+    """
+    h, w = img_bgr.shape[:2]
+    r, g = img_bgr[:, :, 2].astype(np.float32), img_bgr[:, :, 1].astype(np.float32)
+    bg_mean, bg_std = _background_stats(img_bgr)
+
+    # Background is blue-only, so the onion announces itself in red/green.
+    thr_r = bg_mean[2] + k * max(bg_std[2], 1.0)
+    thr_g = bg_mean[1] + k * max(bg_std[1], 1.0)
+    mask = ((r > thr_r) | (g > thr_g)).astype(np.uint8)
+
+    info = {"mode": "uv", "threshold_r": float(thr_r), "threshold_g": float(thr_g),
+            "bg_mean_bgr": [float(v) for v in bg_mean]}
+    return _largest_component_to_detection(mask, h, w, min_area_frac,
+                                            min_radius_frac, max_radius_frac, info)
+
+
+def detect_onion_visible(img_bgr, k=1.6, min_area_frac=0.005,
+                          min_radius_frac=None, max_radius_frac=None):
+    """Return (mask, (cx, cy), radius, info) for the SAME head under ordinary
+    room light — the paired photo used to tell true UV-only fluorescence
+    apart from ordinary surface discoloration (dry skin, dirt) that would
+    show up under any light.
+
+    UV detection keys off red/green because the UV box background is
+    blue-only; that assumption is false here; a normally lit background (a
+    dish, a cloth) has some brightness in every channel. This detector keys
+    off VALUE (HSV) instead: the background here is comparatively dark and
+    the onion is the brightest thing in frame, measured against the same
+    border-sampling approach as the UV case. k is lower (1.6 vs 4.0) because
+    a lit background has much more natural brightness variation than the
+    near-black UV background, so a looser multiple of its std keeps the
+    threshold from creeping above the onion's own darker regions.
+
+    IMPORTANT: this function does NOT try to align with the UV photo via any
+    explicit transform. Both photos are independently normalized through
+    normalize_to_onion with the same onion_radius_frac, which empirically
+    lines them up well enough (verified against a real photo pair — the torn
+    skin flap landed in the same relative position in both) because each
+    photo is centred and scaled around its OWN detected onion. A photo where
+    this detector fails (info['ok'] is False) should not be used for the
+    cross-modal comparison, since a fallback centred crop from the wrong
+    scale would misalign silently rather than obviously.
+    """
+    h, w = img_bgr.shape[:2]
+    v = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2HSV)[:, :, 2].astype(np.float32)
+    bg_mean, bg_std = _background_stats(img_bgr)
+    bg_v_mean = 0.114 * bg_mean[0] + 0.587 * bg_mean[1] + 0.299 * bg_mean[2]  # approx V of BGR mean
+    bg_v_std = max(bg_std.mean(), 5.0)
+
+    thr_v = bg_v_mean + k * bg_v_std
+    mask = (v > thr_v).astype(np.uint8)
+
+    info = {"mode": "visible", "threshold_v": float(thr_v), "bg_v_mean": float(bg_v_mean)}
+    return _largest_component_to_detection(mask, h, w, min_area_frac,
+                                            min_radius_frac, max_radius_frac, info)
 
 
 def normalize_to_onion(img_bgr, target_size, onion_radius_frac, detection=None):

@@ -18,8 +18,9 @@
   </div>
 
   <div class="panel">
-    <h3 class="panel-title">เลือกภาพ {{ total_steps }} มุม</h3>
-    <p class="stepprompt">กรอกรหัสตัวอย่าง แล้วเลือกไฟล์ภาพหอมแดง 1 หัว ที่ถ่ายใต้แสง UV</p>
+    <h3 class="panel-title" id="upload-heading">เลือกภาพ {{ total_steps }} ภาพ ตามลำดับ</h3>
+    <p class="stepcount" id="step-count">ขั้นตอนที่ {{ steps[0].step_number }} จาก {{ total_steps }}</p>
+    <p class="stepprompt" id="step-prompt">{{ steps[0].prompt }}</p>
 
     <div class="field">
       <label class="field-label" for="sample-code">รหัสตัวอย่าง <span class="req">*</span></label>
@@ -31,16 +32,21 @@
     </div>
 
     <div class="field">
-      <label class="field-label" for="images">ไฟล์ภาพ</label>
-      <input type="file" id="images" accept="image/*,.dng" multiple>
+      <label class="field-label" for="images">ไฟล์ภาพ (เลือกทีละภาพตามขั้นตอนด้านบน)</label>
+      <input type="file" id="images" accept="image/*,.dng">
       <p class="field-hint">
         รองรับ <strong>DNG (RAW)</strong> · JPEG · PNG
         <br>แนะนำ DNG มากที่สุด เพราะไม่ผ่าน noise reduction ของมือถือ ซึ่งจะลบจุดเรืองแสงเล็ก ๆ ทิ้ง
       </p>
     </div>
 
+    <div id="upload-shots-wrap" class="hidden">
+      <p class="shots-label">เลือกแล้ว</p>
+      <div class="previewgrid" id="upload-shots-grid"></div>
+    </div>
+
     <div class="capture-actions">
-      <button type="button" class="btn btn-capture" id="upload-btn" disabled>อัปโหลด</button>
+      <button type="button" class="btn btn-capture" id="upload-btn" disabled>{{ steps[0].button }}</button>
       <span class="statustext" id="status-text"></span>
     </div>
   </div>
@@ -130,6 +136,11 @@
   const restartBtn = document.getElementById('restart-btn');
   const toggleBtn = document.getElementById('toggle-btn');
 
+  const stepCount = document.getElementById('step-count');
+  const stepPrompt = document.getElementById('step-prompt');
+  const uploadShotsWrap = document.getElementById('upload-shots-wrap');
+  const uploadShotsGrid = document.getElementById('upload-shots-grid');
+
   const statusText = document.getElementById('status-text');
   const reviewStatus = document.getElementById('review-status');
   const previewGrid = document.getElementById('preview-grid');
@@ -139,10 +150,17 @@
   const resultCaption = document.getElementById('result-caption');
 
   const TOTAL = {{ total_steps }};
+  const FIRST_STEP = {{ steps[0] | tojson }};
   let sessionId = null;
   let busy = false;
   let images = { overlay: null, clean: null };
   let showingOverlay = true;
+  // Accumulated across possibly-several /capture calls for ONE session —
+  // must NOT be cleared per call, or the previous step's accepted photo
+  // (e.g. the UV shot) disappears from view the moment the next one
+  // (the visible-light shot) is uploaded.
+  let acceptedItems = [];
+  let issueList = [];
 
   function showError(m) { errorText.textContent = m; errorPanel.classList.remove('hidden'); }
   function clearError() { errorPanel.classList.add('hidden'); }
@@ -168,17 +186,54 @@
   input.addEventListener('change', refreshUploadBtn);
   sampleCode.addEventListener('input', refreshUploadBtn);
 
-  // ---- ขั้น 1 -> 2 : อัปโหลดแล้วไปหน้าตรวจสอบ ----
+  function renderUploadShots() {
+    uploadShotsGrid.innerHTML = '';
+    acceptedItems.forEach(function (item) {
+      const fig = document.createElement('figure');
+      fig.style.margin = '0';
+      const img = document.createElement('img');
+      img.src = item.preview;
+      img.alt = 'ภาพ ' + item.id;
+      const cap = document.createElement('figcaption');
+      cap.textContent = item.id;
+      fig.appendChild(img); fig.appendChild(cap);
+      uploadShotsGrid.appendChild(fig);
+    });
+    uploadShotsGrid.dataset.count = acceptedItems.length;
+    uploadShotsWrap.classList.toggle('hidden', acceptedItems.length === 0);
+  }
+
+  function goToReview() {
+    previewGrid.innerHTML = '';
+    acceptedItems.forEach(function (item) {
+      const fig = document.createElement('figure');
+      fig.style.margin = '0';
+      const img = document.createElement('img');
+      img.src = item.preview;
+      img.alt = 'ภาพ ' + item.id;
+      const cap = document.createElement('figcaption');
+      cap.textContent = item.id;
+      fig.appendChild(img); fig.appendChild(cap);
+      previewGrid.appendChild(fig);
+    });
+    previewGrid.dataset.count = acceptedItems.length;
+
+    const fw = document.getElementById('framing-warning');
+    if (issueList.length) {
+      fw.innerHTML = '<strong>ปัญหาการจัดกรอบภาพ:</strong><br>· ' + issueList.join('<br>· ');
+      fw.classList.remove('hidden');
+    } else { fw.classList.add('hidden'); }
+
+    setStage('review');
+  }
+
+  // ---- ขั้น 1 : อัปโหลดทีละภาพ วนจนครบทุกขั้นตอน แล้วค่อยไปหน้าตรวจสอบ ----
   uploadBtn.addEventListener('click', function () {
     if (busy) return;
     const files = Array.from(input.files || []);
     const code = sampleCode.value.trim();
     if (!code) { showError('กรุณากรอกรหัสตัวอย่างก่อน'); sampleCode.focus(); return; }
     if (!files.length) { showError('ยังไม่ได้เลือกไฟล์'); return; }
-    if (files.length > TOTAL) {
-      showError('เลือกได้สูงสุด ' + TOTAL + ' ไฟล์ (เลือกมา ' + files.length + ')');
-      return;
-    }
 
     clearError();
     setBusy(true, statusText, 'กำลังอัปโหลด...');
@@ -195,30 +250,23 @@
         const d = res.data;
         sessionId = d.session_id;
 
-        previewGrid.innerHTML = '';
-        const issues = [];
+        acceptedItems = acceptedItems.concat(d.accepted);
         d.accepted.forEach(function (item) {
-          const fig = document.createElement('figure');
-          fig.style.margin = '0';
-          const img = document.createElement('img');
-          img.src = item.preview;
-          img.alt = 'ภาพ ' + item.id;
-          const cap = document.createElement('figcaption');
-          cap.textContent = item.id;
-          fig.appendChild(img); fig.appendChild(cap);
-          previewGrid.appendChild(fig);
-          (item.warnings || []).forEach(function (w) { issues.push(item.id + ': ' + w); });
+          (item.warnings || []).forEach(function (w) { issueList.push(item.id + ': ' + w); });
         });
-        previewGrid.dataset.count = previewGrid.children.length;
+        renderUploadShots();
 
-        const fw = document.getElementById('framing-warning');
-        if (issues.length) {
-          fw.innerHTML = '<strong>ปัญหาการจัดกรอบภาพ:</strong><br>· ' + issues.join('<br>· ');
-          fw.classList.remove('hidden');
-        } else { fw.classList.add('hidden'); }
-
+        input.value = '';
         setBusy(false, statusText, '');
-        setStage('review');
+
+        if (d.all_captured) {
+          goToReview();
+        } else {
+          stepCount.textContent = 'ขั้นตอนที่ ' + d.next_step.step_number + ' จาก ' + d.next_step.total_steps;
+          stepPrompt.textContent = d.next_step.prompt;
+          uploadBtn.textContent = d.next_step.button;
+          uploadBtn.disabled = true; // re-enabled once a file is chosen for this step
+        }
       })
       .catch(function (e) { showError('เชื่อมต่อไม่สำเร็จ: ' + e.message); setBusy(false, statusText, ''); });
   });
@@ -351,15 +399,22 @@
     document.getElementById('result-disclaimer').textContent = d.disclaimer;
   }
 
-  // ---- เริ่มใหม่ ----
+  // ---- ยกเลิก / เริ่มใหม่: กลับสู่ขั้นตอนแรกเสมอ ----
   function resetAll() {
     sessionId = null;
     images = { overlay: null, clean: null };
     showingOverlay = true;
+    acceptedItems = [];
+    issueList = [];
     previewGrid.innerHTML = '';
+    uploadShotsGrid.innerHTML = '';
+    uploadShotsWrap.classList.add('hidden');
     input.value = '';
     sampleCode.value = '';
     uploadBtn.disabled = true;
+    uploadBtn.textContent = FIRST_STEP.button;
+    stepCount.textContent = 'ขั้นตอนที่ ' + FIRST_STEP.step_number + ' จาก ' + FIRST_STEP.total_steps;
+    stepPrompt.textContent = FIRST_STEP.prompt;
     clearError();
     document.getElementById('framing-warning').classList.add('hidden');
     setStage('upload');

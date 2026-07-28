@@ -28,6 +28,7 @@ of loading a pickled sklearn model — the Pi needs scikit-learn installed
 even though predict.py itself never imports it directly.
 """
 import json
+import sys
 import time
 from pathlib import Path
 
@@ -41,6 +42,16 @@ MODEL_PATH = ROOT / "models" / "model.joblib"
 MODEL_CONFIG_PATH = ROOT / "models" / "model_config.json"
 
 CROSS_KERNEL = cv2.getStructuringElement(cv2.MORPH_CROSS, (3, 3))
+
+# Local project module, not a third-party package — importing it does not
+# violate this file's "minimal dependencies" contract (still just numpy,
+# cv2, joblib at the pip level). It is computed once per head, not per view
+# (it compares against a SEPARATE ordinary-light photo), so it is excluded
+# from the generic per-view mean/max aggregation below.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import visible_features as vf_mod  # noqa: E402
+
+EXTRA_HEAD_FEATURE_NAMES = ["uv_exclusive_dot_frac"]
 
 
 def load_config(path=CONFIG_PATH):
@@ -227,8 +238,35 @@ def draw_overlay(img_bgr, small_blobs, large_blobs):
 
 # ---------------------------------------------------------------- top-level API
 
-def predict_head(image_paths, model=None, cfg=None, model_cfg=None):
-    """image_paths: 4 file paths (one head, 4 angles), in any consistent order.
+def compute_visible_cross_check(visible_image_path, small_blobs, cfg):
+    """Cross-check the UV small blobs against an ALREADY-NORMALIZED (640x640,
+    onion-centred) ordinary-light photo of the same head. Returns the
+    sentinel (visible_features.sentinel_no_visible) when no photo was
+    supplied, or when the detector failed to find the onion in it — a wrong
+    alignment used anyway would be worse than marking it unavailable.
+    """
+    vf_cfg = cfg["visible_features"]
+    if not vf_cfg.get("enabled", True) or visible_image_path is None:
+        return float(vf_cfg["sentinel_no_visible"])
+
+    img_bgr = cv2.imread(str(visible_image_path))
+    if img_bgr is None:
+        return float(vf_cfg["sentinel_no_visible"])
+
+    roi_cfg = cfg["roi"]
+    roi_mask = circular_roi_mask(img_bgr.shape[0], roi_cfg["center_fraction"], roi_cfg["radius_fraction"])
+    mask = vf_mod.discoloration_mask(img_bgr, roi_mask, cfg)
+    return vf_mod.uv_exclusive_dot_fraction(small_blobs, mask, cfg)
+
+
+def predict_head(image_paths, model=None, cfg=None, model_cfg=None, visible_image_path=None):
+    """image_paths: UV angle file path(s) for one head, already normalized
+    (centred, fixed scale) by the caller — see onion_detect.normalize_to_onion.
+    visible_image_path: optional companion ordinary-light photo of the SAME
+    head, ALSO already normalized the same way (onion_detect.detect_onion_visible
+    + normalize_to_onion) — this file does no onion detection itself, by
+    design (see module docstring: framing happens upstream, this file only
+    measures an already-framed image).
     Returns {label, confidence, processing_time, overlay_image, overlay_source_path}.
     overlay_image is a BGR numpy array — write it with cv2.imwrite() yourself."""
     start = time.time()
@@ -241,8 +279,12 @@ def predict_head(image_paths, model=None, cfg=None, model_cfg=None):
     # The saved model dictates the naming: a single-view model uses plain
     # feature names, a multi-view one uses _viewmean/_viewmax pairs. Both are
     # built below and the model's own list selects what it needs, so predict
-    # stays correct whichever the model was trained as.
-    base_names = sorted({f.replace("_viewmean", "").replace("_viewmax", "") for f in feature_names})
+    # stays correct whichever the model was trained as. Cross-modal features
+    # (EXTRA_HEAD_FEATURE_NAMES) are excluded here: they don't exist in
+    # per-view feats at all, so the generic mean/max loop below would KeyError.
+    base_names = sorted({
+        f.replace("_viewmean", "").replace("_viewmax", "") for f in feature_names
+    } - set(EXTRA_HEAD_FEATURE_NAMES))
 
     per_view_feats, per_view_blobs, imgs_bgr = [], [], []
     for p in image_paths:
@@ -261,6 +303,12 @@ def predict_head(image_paths, model=None, cfg=None, model_cfg=None):
         agg[b] = float(np.mean(vals))
         agg[f"{b}_viewmean"] = float(np.mean(vals))
         agg[f"{b}_viewmax"] = float(np.max(vals))
+
+    if "uv_exclusive_dot_frac" in feature_names:
+        # Only the LAST view's blobs feed the cross-check, matching
+        # extract_features.py's training-side convention.
+        last_small_blobs = per_view_blobs[-1][0] if per_view_blobs else []
+        agg["uv_exclusive_dot_frac"] = compute_visible_cross_check(visible_image_path, last_small_blobs, cfg)
 
     missing = [f for f in feature_names if f not in agg]
     if missing:

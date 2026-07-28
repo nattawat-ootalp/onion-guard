@@ -40,7 +40,8 @@ from scipy import ndimage
 
 from common import ROOT, load_config, circular_roi_mask, srgb_to_linear
 from blob_features import detect_blobs, summarize_blobs
-from onion_detect import detect_onion, normalize_to_onion
+from onion_detect import detect_onion, detect_onion_visible, normalize_to_onion
+import visible_features as vf_mod
 
 IMAGES_DIR = ROOT / "images"
 LABELS_PATH = ROOT / "data" / "labels.csv"
@@ -63,6 +64,14 @@ FEATURE_NAMES = [
     "avg_small_blob_diam_px", "avg_large_blotch_diam_px",
     "cluster_density", "ratio_small_to_large",
 ]
+
+# Computed ONCE per head (not per view, not mean/max'd) because it compares
+# against a SEPARATE photo (ordinary light) rather than describing the UV
+# photo itself. Value is visible_features.sentinel_no_visible when no
+# "{code}_VISIBLE.png" companion file exists — real for every mock sample
+# today, so this column is currently constant; it becomes informative once
+# real paired photos start arriving. See src/visible_features.py.
+EXTRA_HEAD_FEATURES = ["uv_exclusive_dot_frac"]
 
 
 def preprocess_image(img_bgr, cfg):
@@ -178,7 +187,43 @@ def compute_view_features(img_u8, cfg):
     v["blob_max"] = float(max(all_areas)) if all_areas else 0.0
     v.update(summarize_blobs(small_blobs, large_blobs))
 
-    return v
+    return v, small_blobs, large_blobs
+
+
+def compute_uv_exclusive_feature(code, last_view_blobs, cfg):
+    """Look for "{code}_VISIBLE.png" next to the UV images; if present, cross
+    -check the last view's small blobs against it. Absent for every mock
+    sample today (mock never generated a visible-light companion), so this
+    returns the sentinel for all of them — expected, not a bug."""
+    vf_cfg = cfg["visible_features"]
+    if not vf_cfg.get("enabled", True):
+        return float(vf_cfg["sentinel_no_visible"])
+
+    visible_path = IMAGES_DIR / f"{code}_VISIBLE.png"
+    if not visible_path.exists():
+        return float(vf_cfg["sentinel_no_visible"])
+
+    rgb = np.array(Image.open(visible_path).convert("RGB"))
+    bgr = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
+
+    od = cfg["onion_detect"]
+    sanity = od.get("sanity", {})
+    detection = detect_onion_visible(
+        bgr, k=od["visible_light_detect_k"], min_area_frac=od["min_area_frac"],
+        min_radius_frac=sanity.get("min_radius_frac_of_frame"),
+        max_radius_frac=sanity.get("max_radius_frac_of_frame"),
+    )
+    if not detection[3].get("ok"):
+        # Detector failed on this photo — using it anyway would risk a
+        # silently wrong alignment, worse than just marking it unavailable.
+        return float(vf_cfg["sentinel_no_visible"])
+
+    framed, _ = normalize_to_onion(bgr, cfg["image"]["size_px"], od["onion_radius_frac"],
+                                    detection=detection)
+    roi_mask = circular_roi_mask(framed.shape[0], cfg["roi"]["center_fraction"],
+                                  cfg["roi"]["radius_fraction"])
+    mask = vf_mod.discoloration_mask(framed, roi_mask, cfg)
+    return vf_mod.uv_exclusive_dot_fraction(last_view_blobs, mask, cfg)
 
 
 def main():
@@ -187,9 +232,11 @@ def main():
     n_views = cfg["samples"]["n_views"]
 
     rows = []
+    n_with_visible = 0
     for _, row in labels_df.iterrows():
         code = row["sample_code"]
         per_view = []
+        last_view_blobs = []
         for view in range(1, n_views + 1):
             rgb = np.array(Image.open(IMAGES_DIR / f"{code}_V{view}.png").convert("RGB"))
             # Framing works in BGR (OpenCV convention) like the serving path,
@@ -197,10 +244,16 @@ def main():
             bgr = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
             framed = preprocess_image(bgr, cfg)
             img_u8 = cv2.cvtColor(framed, cv2.COLOR_BGR2RGB).astype(np.float32)
-            per_view.append(compute_view_features(img_u8, cfg))
+            feats, small_blobs, _ = compute_view_features(img_u8, cfg)
+            per_view.append(feats)
+            last_view_blobs = small_blobs  # only the final view feeds the visible cross-check
 
         agg = {"sample_code": code}
         agg.update(aggregate_views(per_view))
+        uv_excl = compute_uv_exclusive_feature(code, last_view_blobs, cfg)
+        if uv_excl != cfg["visible_features"]["sentinel_no_visible"]:
+            n_with_visible += 1
+        agg["uv_exclusive_dot_frac"] = uv_excl
         rows.append(agg)
 
     features_df = pd.DataFrame(rows)
@@ -209,10 +262,11 @@ def main():
     print(f"Wrote {OUT_PATH}: {len(out_df)} rows x {len(out_df.columns)} columns")
     if n_views == 1:
         print(f"({len(FEATURE_NAMES)} features, single view — no mean/max pair "
-              f"+ sample_code + compactdry)")
+              f"+ {len(EXTRA_HEAD_FEATURES)} cross-modal + sample_code + compactdry)")
     else:
         print(f"({len(FEATURE_NAMES)} features x {{mean, max}} across {n_views} views "
-              f"+ sample_code + compactdry)")
+              f"+ {len(EXTRA_HEAD_FEATURES)} cross-modal + sample_code + compactdry)")
+    print(f"Heads with a visible-light companion photo: {n_with_visible}/{len(labels_df)}")
 
 
 if __name__ == "__main__":

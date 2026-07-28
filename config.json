@@ -38,7 +38,18 @@
       "enabled": true,
       "max_ratio": 1.25,
       "min_level_to_judge": 4.0
-    }
+    },
+    "visible_light_detect_k": 1.6,
+    "_visible_light_detect_k_why": "Lower than detect_k (4.0) because a normally lit background has far more natural brightness variation than the near-black UV background, so a looser multiple of its std keeps the threshold from creeping above the onion's own darker regions. See onion_detect.detect_onion_visible."
+  },
+
+  "visible_features": {
+    "_comment": "Cross-check UV dots against an ordinary-light photo of the same head — src/visible_features.py. A dot that also shows as surface discoloration under normal light is weaker evidence of true fluorescence (the report's own premise: real fungal fluorescence is not yet visible to the naked eye).",
+    "_calibration_caveat": "hue range and sat_min were tuned on exactly ONE real photo pair (dry tan skin measured at hue 10-40, covering 17% of the visible surface but 30% of UV blob locations). Treat as a starting point, not a validated cutoff, until checked against more pairs.",
+    "enabled": true,
+    "discoloration_hue_range": [10, 40],
+    "discoloration_sat_min": 40,
+    "sentinel_no_visible": -1.0
   },
   "mock": {
     "_comment": "Knobs controlling how the synthetic UV images are generated. Retune freely once real photos are available and comparison shows the mock is unrealistic.",
@@ -200,6 +211,12 @@
         "id": "V1",
         "kind": "uv",
         "prompt": "ภาพหอมแดงใต้แสง UV (มุมเดียว)",
+        "button": "เลือกภาพ"
+      },
+      {
+        "id": "VISIBLE",
+        "kind": "visible",
+        "prompt": "ถ่ายหัวเดิมซ้ำด้วยแสงปกติ — ห้ามขยับกล้องหรือหัวหอม เปิดไฟห้อง (ปิดไฟ UV) แล้วถ่ายอีกใบ",
         "button": "เลือกภาพ"
       }
     ],
