@@ -204,7 +204,77 @@ class LocalFileDataSource(DataSource):
         return (self.data_dir / "mock_metadata.csv").exists()
 
 
+class SupabaseDataSource(LocalFileDataSource):
+    """Scan records come from Supabase; model metrics stay on disk.
+
+    Deliberately extends the local source rather than replacing it. The scan
+    table is the thing that must be shared and durable, but model metrics and
+    the ROC/confusion figures are products of a training run that lives with
+    the code — copying them into a database would only add a way for the two
+    to disagree about which model is deployed.
+    """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        import sys
+        sys.path.insert(0, str(ROOT / "src"))
+        from supabase_client import SupabaseClient
+        self.client = SupabaseClient()
+
+    def get_samples(self):
+        rows = self.client.select(
+            "scans",
+            columns="sample_code,captured_at,pred_label,pred_conf,pred_proba,"
+                    "features,compactdry_truth,ood_status,borderline",
+            order="captured_at.desc",
+        )
+        samples = []
+        for r in rows:
+            truth = r.get("compactdry_truth")
+            pred = r.get("pred_label")
+            entry = {
+                "sample_code": r["sample_code"],
+                "compactdry": int(truth) if truth is not None else None,
+                "pred_label": int(pred) if pred is not None else None,
+                "pred_proba": r.get("pred_proba"),
+                "features": {},
+                # None (not False) when either side is missing — an unlabelled
+                # scan is not a wrong prediction.
+                "correct": (int(truth) == int(pred)) if truth is not None and pred is not None else None,
+            }
+            feats = r.get("features") or {}
+            for col, _label, _places in TABLE_FEATURE_COLUMNS:
+                entry["features"][col] = _to_float(feats.get(col))
+            samples.append(entry)
+        return samples
+
+    def is_mock_data(self):
+        """Mock while the deployed model was trained on generated images.
+        Real scans arriving in Supabase do not change what the model learned
+        from, so this still keys off the training artefacts on disk."""
+        return super().is_mock_data()
+
+
 def get_data_source():
-    """Single place the app resolves its backend. Swap in SupabaseDataSource
-    here once Phase 5 lands."""
-    return LocalFileDataSource()
+    """Single place the app resolves its backend.
+
+    Uses Supabase when credentials are present and reachable, otherwise falls
+    back to local CSVs so development works with no network and a missing
+    database never takes the whole app down.
+    """
+    import os
+    import sys
+    sys.path.insert(0, str(ROOT / "src"))
+    try:
+        from supabase_client import load_env
+        load_env()
+    except Exception:  # noqa: BLE001
+        return LocalFileDataSource()
+
+    if not os.environ.get("SUPABASE_URL"):
+        return LocalFileDataSource()
+    try:
+        return SupabaseDataSource()
+    except Exception as exc:  # noqa: BLE001
+        print(f"[data_source] ใช้ Supabase ไม่ได้ ({exc}) — กลับไปใช้ไฟล์ในเครื่อง")
+        return LocalFileDataSource()

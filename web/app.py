@@ -730,6 +730,55 @@ def capture():
     })
 
 
+def _save_scan(session, result, checks):
+    """Persist the scan to Supabase, image included.
+
+    Never raises: a database or network problem must not lose the operator's
+    result, which is already computed and on screen. The response carries
+    saved_to_db so a silent failure is visible rather than assumed.
+
+    sample_code is left as the session id for now — the operator has no field
+    to type the real S0xx code yet, and inventing one would create records
+    that cannot be matched to a CompactDry result later.
+    """
+    client = getattr(_data_source, "client", None)
+    if client is None:
+        return {"ok": False, "reason": "ไม่ได้ต่อ Supabase (ใช้ไฟล์ในเครื่อง)"}
+
+    try:
+        uv = [c for c in session["captured"] if c["kind"] == "uv"]
+        image_path = None
+        if uv and uv[0].get("path"):
+            src = Path(uv[0]["path"])
+            if src.exists():
+                image_path = f"{session['dir'].name}/{src.name}"
+                client.upload("scans", image_path, src.read_bytes(), content_type="image/png")
+
+        row = client.insert("scans", {
+            "sample_code": session["dir"].name,
+            "image_path": image_path,
+            "pred_label": int(checks["label"]),
+            "pred_conf": round(float(result["confidence"]), 4),
+            "pred_proba": round(float(result["proba_positive"]), 4),
+            "decision_threshold": round(float(result["decision_threshold"]), 4),
+            "features": result["features"],
+            "ood_status": checks["ood"].get("status"),
+            "borderline": bool(result["borderline"]),
+            "framing_ok": not checks["framing_failed"],
+            "quality_notes": {
+                "ood": checks["ood"], "scale": checks["scale"],
+                "background": checks["background"], "exif": checks["exif"],
+                "framing_failed_views": checks["framing_failed"],
+            },
+            # left null on purpose: filled in after the CompactDry culture is
+            # read. null means "not tested yet", never "no fungus".
+            "compactdry_truth": None,
+        })
+        return {"ok": True, "id": row.get("id"), "sample_code": row.get("sample_code")}
+    except Exception as exc:  # noqa: BLE001
+        return {"ok": False, "reason": str(exc)[:200]}
+
+
 @app.route("/predict-session", methods=["POST"])
 def predict_session():
     body = request.get_json(silent=True) or {}
@@ -779,9 +828,16 @@ def predict_session():
     framing_failed = [c["step_id"] for c in uv
                       if not (c.get("framing") or {}).get("ok", True)]
 
+    saved = _save_scan(session, result, {
+        "label": label, "ood": ood_report, "scale": scale_report,
+        "background": bg_report, "exif": exif_report,
+        "framing_failed": framing_failed,
+    })
+
     _sessions.pop(session_id, None)
 
     return jsonify({
+        "saved_to_db": saved,
         "label": label,
         "label_text": LABEL_TEXT[label],
         "confidence": result["confidence"],
