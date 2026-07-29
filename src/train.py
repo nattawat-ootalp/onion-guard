@@ -308,8 +308,15 @@ def main():
 
     print("\n=== NDFI / A_low watchlist ===")
     watch_rows = imp_df[imp_df["feature"].str.startswith(tuple(watchlist))]
-    print(watch_rows.to_string(index=False))
-    if watch_rows["mean_importance"].max() < imp_df["mean_importance"].median():
+    if watch_rows.empty:
+        # Feature selection already removed every watchlisted feature, so there
+        # is no importance to compare. Without this guard .max() returns NaN,
+        # the comparison is False, and the "actually non-trivial" branch prints
+        # the exact opposite of what happened.
+        print(f"ไม่มีฟีเจอร์ในรายการเฝ้าระวัง ({', '.join(watchlist)}) อยู่ในชุดที่เทรนแล้ว "
+              "— ถูกคัดออกไปตอนเลือกฟีเจอร์")
+    elif watch_rows["mean_importance"].max() < imp_df["mean_importance"].median():
+        print(watch_rows.to_string(index=False))
         print("NOTE: NDFI/A_low importances are below the median feature — consistent with "
               "the Phase 2 univariate AUC finding. Keeping them in the feature list as agreed "
               + ("(not deleting); revisit once real photos are available, since a formula/behavior "
@@ -318,6 +325,7 @@ def main():
                  "(not deleting). This now holds on REAL fluorescence too, so they are candidates "
                  "for removal — with this few heads per feature, dropping dead weight helps."))
     else:
+        print(watch_rows.to_string(index=False))
         print("NOTE: NDFI/A_low actually show non-trivial importance here — worth a closer look "
               "before assuming they're safe to ignore.")
 
