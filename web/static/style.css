@@ -299,6 +299,26 @@ input[type="file"]:focus, input[type="search"]:focus, select:focus {
 .overlay-figure img { width: 100%; height: auto; border: 1px solid var(--rule); display: block; }
 .overlay-figure figcaption { margin-top: 8px; font-size: 0.85rem; color: var(--ink-muted); }
 
+.modal {
+  position: fixed; inset: 0; z-index: 200;
+  display: flex; align-items: center; justify-content: center; padding: 24px;
+}
+.modal.hidden { display: none; }
+.modal-backdrop { position: absolute; inset: 0; background: rgba(15, 23, 42, 0.72); }
+.modal-body {
+  position: relative; z-index: 1; max-width: min(90vw, 720px); max-height: 90vh;
+  background: var(--surface); border-radius: 10px; padding: 16px;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.35);
+}
+.modal-body img { display: block; max-width: 100%; max-height: 78vh; margin: 0 auto; border: 1px solid var(--rule); }
+.modal-caption { margin: 10px 0 0; text-align: center; font-size: 0.88rem; color: var(--ink-muted); }
+.modal-close {
+  position: absolute; top: -14px; right: -14px; width: 32px; height: 32px;
+  border-radius: 50%; border: none; background: var(--navy); color: #fff;
+  font-size: 1.3rem; line-height: 1; cursor: pointer;
+}
+.modal-close:hover { background: var(--navy-dark); }
+
 .notebox {
   margin-top: 18px; padding: 11px 14px; background: var(--page);
   border-left: 3px solid var(--ink-muted); font-size: 0.88rem; color: var(--ink-soft);

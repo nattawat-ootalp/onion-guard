@@ -67,6 +67,15 @@
     </table>
   </div>
 </div>
+
+<div class="modal hidden" id="image-modal">
+  <div class="modal-backdrop" id="image-modal-backdrop"></div>
+  <div class="modal-body">
+    <button type="button" class="modal-close" id="image-modal-close" aria-label="ปิด">×</button>
+    <img id="image-modal-img" alt="ภาพตัวอย่างที่บันทึกไว้">
+    <p class="modal-caption" id="image-modal-caption"></p>
+  </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
@@ -132,7 +141,7 @@
         btn.className = 'btn btn-secondary';
         btn.textContent = 'ดูรูป';
         btn.addEventListener('click', function () {
-          window.open('/api/scan-image?path=' + encodeURIComponent(r.image_path), '_blank');
+          openImageModal(r.image_path, r.sample_code);
         });
         img.appendChild(btn);
       } else {
@@ -199,6 +208,28 @@
       })
       .catch(function (e) { st.textContent = 'เชื่อมต่อไม่สำเร็จ: ' + e.message; });
   }
+
+  const imageModal = document.getElementById('image-modal');
+  const imageModalImg = document.getElementById('image-modal-img');
+  const imageModalCaption = document.getElementById('image-modal-caption');
+
+  function openImageModal(imagePath, sampleCode) {
+    imageModalCaption.textContent = sampleCode || '';
+    // The <img> tag follows /api/scan-image's redirect to the signed Storage
+    // URL itself, same as opening it directly did — just shown inline now
+    // instead of in a new tab.
+    imageModalImg.src = '/api/scan-image?path=' + encodeURIComponent(imagePath);
+    imageModal.classList.remove('hidden');
+  }
+  function closeImageModal() {
+    imageModal.classList.add('hidden');
+    imageModalImg.src = '';
+  }
+  document.getElementById('image-modal-backdrop').addEventListener('click', closeImageModal);
+  document.getElementById('image-modal-close').addEventListener('click', closeImageModal);
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && !imageModal.classList.contains('hidden')) closeImageModal();
+  });
 
   function updateStats() {
     let pend = 0, pos = 0, neg = 0;
