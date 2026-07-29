@@ -304,11 +304,16 @@ def predict_head(image_paths, model=None, cfg=None, model_cfg=None, visible_imag
         agg[f"{b}_viewmean"] = float(np.mean(vals))
         agg[f"{b}_viewmax"] = float(np.max(vals))
 
-    if "uv_exclusive_dot_frac" in feature_names:
-        # Only the LAST view's blobs feed the cross-check, matching
-        # extract_features.py's training-side convention.
-        last_small_blobs = per_view_blobs[-1][0] if per_view_blobs else []
-        agg["uv_exclusive_dot_frac"] = compute_visible_cross_check(visible_image_path, last_small_blobs, cfg)
+    # Computed even when the current model does not use it. Every scan's
+    # feature dict is stored and later becomes training data, so gating this
+    # on the deployed model's feature list would make the feature impossible
+    # to reintroduce: no model asks for it -> it never gets recorded -> no
+    # data exists to train a model that asks for it.
+    # Only the LAST view's blobs feed the cross-check, matching
+    # extract_features.py's training-side convention.
+    last_small_blobs = per_view_blobs[-1][0] if per_view_blobs else []
+    agg["uv_exclusive_dot_frac"] = compute_visible_cross_check(
+        visible_image_path, last_small_blobs, cfg)
 
     missing = [f for f in feature_names if f not in agg]
     if missing:

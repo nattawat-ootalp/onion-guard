@@ -21,12 +21,17 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))
 
-from extract_features import FEATURE_NAMES  # noqa: E402
+from extract_features import EXTRA_HEAD_FEATURES, FEATURE_NAMES  # noqa: E402
 from supabase_client import SupabaseClient, load_env  # noqa: E402
 
 ID_COL = "sample_code"
 LABEL_COL = "compactdry"
 OUT_PATH = ROOT / "data" / "features.csv"
+
+# Same column order extract_features.py writes: the per-view feature block,
+# then the head-level extras. Anything that ends up here must also be in the
+# stored feature dict, or the row is dropped rather than silently zero-filled.
+ALL_FEATURES = list(FEATURE_NAMES) + list(EXTRA_HEAD_FEATURES)
 
 
 def main():
@@ -60,7 +65,7 @@ def main():
             dropped.append((code, "auto-framing ล้มเหลว"))
             continue
         feats = r.get("features") or {}
-        missing = [f for f in FEATURE_NAMES if f not in feats]
+        missing = [f for f in ALL_FEATURES if f not in feats]
         if missing:
             dropped.append((code, f"ฟีเจอร์ขาด {len(missing)} ตัว"))
             continue
@@ -73,15 +78,15 @@ def main():
     out.parent.mkdir(parents=True, exist_ok=True)
     with out.open("w", newline="", encoding="utf-8") as fh:
         writer = csv.writer(fh)
-        writer.writerow([ID_COL] + list(FEATURE_NAMES) + [LABEL_COL])
+        writer.writerow([ID_COL] + ALL_FEATURES + [LABEL_COL])
         for r in kept:
             feats = r["features"]
             writer.writerow([r["sample_code"]]
-                            + [feats[f] for f in FEATURE_NAMES]
+                            + [feats[f] for f in ALL_FEATURES]
                             + [int(r["compactdry_truth"])])
 
     labels = [int(r["compactdry_truth"]) for r in kept]
-    print(f"เขียน {out} — {len(kept)} แถว, {len(FEATURE_NAMES)} ฟีเจอร์")
+    print(f"เขียน {out} — {len(kept)} แถว, {len(ALL_FEATURES)} ฟีเจอร์")
     print(f"  พบ (1) = {labels.count(1)} | ไม่พบ (0) = {labels.count(0)}")
     if dropped:
         print(f"  ตัดออก {len(dropped)}: " + ", ".join(f"{c} ({why})" for c, why in dropped))

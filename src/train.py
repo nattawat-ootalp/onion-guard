@@ -20,6 +20,8 @@ about real performance. Once real photos replace it that file is gone and
 the metrics are a genuine (if small-sample) estimate. Every printout below
 states which case it is, so a report figure is never quoted out of context.
 """
+import json
+
 import numpy as np
 import pandas as pd
 import matplotlib
@@ -40,6 +42,32 @@ REPORTS_DIR = ROOT / "reports"
 # Same signal the web app uses for its "mock data" badge: the generator writes
 # this file, real captures never do. One source of truth beats two.
 MOCK_MARKER_PATH = ROOT / "data" / "mock_metadata.csv"
+# Written by select_features.py. Absent = train on every column in
+# features.csv, which is the right default before any selection has been run.
+SELECTED_FEATURES_PATH = ROOT / "data" / "selected_features.json"
+
+
+def resolve_feature_cols(df):
+    """Columns to train on, and a line describing where they came from.
+
+    Kept here rather than duplicated in train_final.py so the CV estimate and
+    the shipped model can never end up fitted on different feature sets — the
+    kind of mismatch that makes a reported accuracy quietly wrong.
+    """
+    available = [c for c in df.columns if c not in (ID_COL, LABEL_COL)]
+    if not SELECTED_FEATURES_PATH.exists():
+        return available, f"ฟีเจอร์ทั้งหมดใน features.csv ({len(available)} ตัว)"
+
+    with open(SELECTED_FEATURES_PATH, encoding="utf-8") as f:
+        selected = json.load(f)["features"]
+    missing = [c for c in selected if c not in available]
+    if missing:
+        raise SystemExit(
+            f"{SELECTED_FEATURES_PATH.name} ระบุฟีเจอร์ที่ไม่มีใน features.csv: {missing}\n"
+            "รัน src/export_features_from_db.py ใหม่ หรือรัน src/select_features.py --write ใหม่"
+        )
+    return selected, (f"{len(selected)} ตัวจาก {SELECTED_FEATURES_PATH.name} "
+                      f"(คัดจาก {len(available)} ตัว)")
 
 LABEL_COL = "compactdry"
 ID_COL = "sample_code"
@@ -222,7 +250,7 @@ def main():
     REPORTS_DIR.mkdir(parents=True, exist_ok=True)
     cfg = load_config()
     df = pd.read_csv(FEATURES_PATH)
-    feature_cols = [c for c in df.columns if c not in (ID_COL, LABEL_COL)]
+    feature_cols, feature_source = resolve_feature_cols(df)
 
     is_mock = MOCK_MARKER_PATH.exists()
 
@@ -233,7 +261,7 @@ def main():
     else:
         print(f"Dataset: REAL photos, {len(df)} heads "
               f"({int((df[LABEL_COL] == 1).sum())} พบ / {int((df[LABEL_COL] == 0).sum())} ไม่พบ). "
-              f"{len(feature_cols)} features.")
+              f"Features: {feature_source}.")
         print(f"Sample size is small — {len(df) / len(feature_cols):.1f} heads per feature — so "
               "every metric below carries a wide confidence interval. Treat the SD across folds "
               "as the honest error bar, not the mean alone.\n")

@@ -327,6 +327,7 @@ def load_upload_to_bgr(file_storage, cfg, kind="uv"):
             bgr, k=od["visible_light_detect_k"], min_area_frac=od["min_area_frac"],
             min_radius_frac=sanity.get("min_radius_frac_of_frame"),
             max_radius_frac=sanity.get("max_radius_frac_of_frame"),
+            min_abs_threshold=od.get("visible_light_min_abs_a", 6.0),
         )
     else:
         detection = detect_onion(
@@ -995,7 +996,14 @@ def predict_session():
     paths = [c["path"] for c in uv if c["path"]]
     if len(paths) != len(uv):
         return jsonify({"error": "การบันทึกภาพไม่ครบ กรุณาเปิด save_captures ใน config"}), 500
-    visible_path = visible[0]["path"] if visible and visible[0].get("path") else None
+    # A visible-light frame whose onion was never found got a fallback centred
+    # crop, so it is at the wrong scale and does not line up with the UV frame.
+    # Dropping it here makes predict fall back to the "no visible photo"
+    # sentinel — which is what extract_features.py already does on the training
+    # side, and the only way the two stay comparable.
+    visible_usable = (visible and visible[0].get("path")
+                      and (visible[0].get("framing") or {}).get("ok", True))
+    visible_path = visible[0]["path"] if visible_usable else None
 
     try:
         with _lock:

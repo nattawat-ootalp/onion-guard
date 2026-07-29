@@ -212,6 +212,7 @@ def compute_uv_exclusive_feature(code, last_view_blobs, cfg):
         bgr, k=od["visible_light_detect_k"], min_area_frac=od["min_area_frac"],
         min_radius_frac=sanity.get("min_radius_frac_of_frame"),
         max_radius_frac=sanity.get("max_radius_frac_of_frame"),
+        min_abs_threshold=od.get("visible_light_min_abs_a", 6.0),
     )
     if not detection[3].get("ok"):
         # Detector failed on this photo — using it anyway would risk a

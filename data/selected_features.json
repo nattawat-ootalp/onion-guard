@@ -1,0 +1,45 @@
+{
+  "features": [
+    "sd_G",
+    "avg_small_blob_diam_px",
+    "A_high",
+    "mean_G",
+    "n_small_sharp_blobs",
+    "avg_large_blotch_diam_px",
+    "ratio_small_to_large",
+    "blob_max",
+    "texture",
+    "sd_B"
+  ],
+  "k": 10,
+  "chosen_by": "selection frequency across repeated nested CV folds",
+  "dropped_correlated": [
+    {
+      "feature": "sd_R",
+      "duplicate_of": "mean_R",
+      "corr": 0.9576860581613261
+    },
+    {
+      "feature": "brightness_mean",
+      "duplicate_of": "mean_B",
+      "corr": 0.9953814119036135
+    },
+    {
+      "feature": "brightness_sd",
+      "duplicate_of": "sd_B",
+      "corr": 0.9929425871209311
+    },
+    {
+      "feature": "F_p95",
+      "duplicate_of": "sd_B",
+      "corr": 0.9887273900937319
+    }
+  ],
+  "cv": {
+    "n_splits": 5,
+    "repeats": 5,
+    "kappa_mean": 0.5133871904163525,
+    "accuracy_mean": 0.77
+  },
+  "_note": "อ่านโดย train.py/train_final.py ถ้ามีไฟล์นี้ ลบไฟล์ทิ้ง = กลับไปใช้ฟีเจอร์ทั้งหมด"
+}

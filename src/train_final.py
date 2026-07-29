@@ -30,7 +30,7 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import roc_curve
 
 from common import ROOT, load_config
-from train import select_hyperparams, LABEL_COL, ID_COL
+from train import select_hyperparams, resolve_feature_cols, LABEL_COL, ID_COL
 
 FEATURES_PATH = ROOT / "data" / "features.csv"
 REPORTS_DIR = ROOT / "reports"
@@ -69,7 +69,8 @@ def error_analysis():
 
 def train_final_model(cfg):
     df = pd.read_csv(FEATURES_PATH)
-    feature_cols = [c for c in df.columns if c not in (ID_COL, LABEL_COL)]
+    feature_cols, feature_source = resolve_feature_cols(df)
+    print(f"Features: {feature_source}")
 
     X = df[feature_cols].values
     y = df[LABEL_COL].values
