@@ -150,6 +150,14 @@ class SupabaseClient:
                       raw=content, headers=headers)
         return path
 
+    def remove(self, bucket, path):
+        """Delete one stored object.
+
+        Deleting a scan row without this leaves its image orphaned in the
+        bucket — invisible, still billed, and impossible to attribute later.
+        """
+        return self._request("DELETE", f"/storage/v1/object/{bucket}/{path}")
+
     def signed_url(self, bucket, path, expires_in=3600):
         """Time-limited URL for a private bucket.
 
