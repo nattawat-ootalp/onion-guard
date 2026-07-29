@@ -405,3 +405,37 @@ table.confusion .cell-wrong { background: var(--found-tint); color: var(--found)
   background: var(--navy-tint); color: var(--navy); border-color: var(--navy);
 }
 .labelstatus { font-size: 0.78rem; color: var(--ink-muted); margin-left: 4px; }
+
+/* ---- คำแนะนำหลังสแกน ----------------------------------------------------
+   บอกว่าควรทำอะไรต่อ ไม่ใช่รับรองว่าปลอดภัย สีจึงใช้ชุดเดียวกับผลการคัดกรอง
+   (แดงอิฐ = พบ, เขียวเข้ม = ไม่พบ) ไม่ได้เพิ่มสีใหม่ให้ต้องตีความ */
+.advice {
+  margin-top: 20px; padding: 15px 17px;
+  background: var(--surface); border: 1px solid var(--rule);
+  border-left: 4px solid var(--ink-muted);
+}
+.advice-title {
+  margin: 0 0 8px; font-size: 1rem; font-weight: 600; color: var(--ink);
+}
+.advice-reason {
+  margin: 0 0 10px; font-size: 0.88rem; color: var(--ink-soft);
+}
+.advice-steps {
+  margin: 0; padding-left: 20px; font-size: 0.92rem; color: var(--ink-soft);
+}
+.advice-steps li { margin-bottom: 6px; line-height: 1.55; }
+.advice-steps li:last-child { margin-bottom: 0; }
+.advice-note {
+  margin: 12px 0 0; padding-top: 10px; border-top: 1px solid var(--rule-soft);
+  font-size: 0.85rem; color: var(--ink-muted); line-height: 1.55;
+}
+
+.advice.is-positive   { border-left-color: var(--found);  background: var(--found-tint); }
+.advice.is-positive .advice-title { color: var(--found); }
+.advice.is-negative   { border-left-color: var(--clear);  background: var(--clear-tint); }
+.advice.is-negative .advice-title { color: var(--clear); }
+.advice.is-caution    { border-left-color: var(--notice); background: var(--notice-tint); }
+.advice.is-caution .advice-title { color: var(--notice); }
+/* ผลเชื่อไม่ได้: เป็นกลาง ไม่ใช้สีผลบวก/ลบ เพราะยังไม่มีผลให้สื่อ */
+.advice.is-unreliable { border-left-color: var(--ink-muted); background: var(--page); }
+.advice.is-unreliable .advice-title { color: var(--ink); }

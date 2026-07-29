@@ -128,6 +128,14 @@
           </div>
         </div>
 
+        <!-- คำแนะนำว่าควรทำอะไรต่อ ไม่ใช่คำรับรองความปลอดภัย -->
+        <section class="advice hidden" id="advice-box" aria-live="polite">
+          <h4 class="advice-title" id="advice-headline"></h4>
+          <p class="advice-reason hidden" id="advice-reason"></p>
+          <ol class="advice-steps" id="advice-steps"></ol>
+          <p class="advice-note" id="advice-note"></p>
+        </section>
+
         <div id="exif-box" class="hidden"></div>
         <div id="partial-warning" class="warnbox hidden"></div>
         <div class="notebox" id="result-disclaimer"></div>
@@ -363,6 +371,35 @@
   });
 
   // ---- สลับภาพวงจุด / ไม่วงจุด ----
+  // คำแนะนำหลังสแกน — บอกว่าควรทำอะไรต่อ ไม่ใช่รับรองว่าปลอดภัย
+  // ข้อความทั้งหมดมาจากเซิร์ฟเวอร์ (config.json > advice) ไม่ได้เขียนซ้ำไว้ที่นี่
+  // เพื่อไม่ให้สองที่พูดไม่ตรงกัน
+  function renderAdvice(a) {
+    const box = document.getElementById('advice-box');
+    if (!a) { box.classList.add('hidden'); return; }
+
+    box.className = 'advice is-' + a.level;
+    document.getElementById('advice-headline').textContent = a.headline;
+
+    const reasonEl = document.getElementById('advice-reason');
+    if (a.reason) {
+      reasonEl.textContent = 'สาเหตุ: ' + a.reason;
+      reasonEl.classList.remove('hidden');
+    } else {
+      reasonEl.classList.add('hidden');
+    }
+
+    const steps = document.getElementById('advice-steps');
+    steps.innerHTML = '';
+    (a.steps || []).forEach(function (s) {
+      const li = document.createElement('li');
+      li.textContent = s;
+      steps.appendChild(li);
+    });
+
+    document.getElementById('advice-note').textContent = a.note || '';
+  }
+
   function applyImage() {
     if (showingOverlay) {
       resultImg.src = images.overlay;
@@ -413,6 +450,8 @@
     document.getElementById('result-time').innerHTML =
       d.processing_time.toFixed(2) + '<span class="figure-unit"> วินาที</span>';
     document.getElementById('result-blobs').textContent = d.n_small_blobs;
+
+    renderAdvice(d.advice);
 
     // ความคงที่ของค่ากล้อง
     const ex = document.getElementById('exif-box');

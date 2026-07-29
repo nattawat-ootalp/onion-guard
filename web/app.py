@@ -47,6 +47,7 @@ from PIL import Image, ImageOps, ExifTags
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))
 
+from advice import build_advice  # noqa: E402
 from data_source import get_data_source, TABLE_FEATURE_COLUMNS  # noqa: E402
 from onion_detect import detect_onion, detect_onion_visible, normalize_to_onion  # noqa: E402
 import predict as predict_mod  # noqa: E402
@@ -1135,6 +1136,17 @@ def _predict_session(dataset):
     framing_failed = [c["step_id"] for c in uv
                       if not (c.get("framing") or {}).get("ok", True)]
 
+    advice_cfg = cfg.get("advice", {})
+    advice = build_advice(
+        label,
+        borderline=result["borderline"],
+        ood_status=ood_report.get("status"),
+        framing_ok=not framing_failed,
+        scale_status=scale_report.get("status"),
+        background_status=bg_report.get("status"),
+        advice_table=advice_cfg.get("messages"),
+    ) if advice_cfg.get("enabled", True) else None
+
     saved = _save_scan(session, result, {
         "label": label, "ood": ood_report, "scale": scale_report,
         "background": bg_report, "exif": exif_report,
@@ -1167,6 +1179,7 @@ def _predict_session(dataset):
         "decision_threshold": round(result["decision_threshold"], 3),
         "borderline": result["borderline"],
         "framing_failed_views": framing_failed,
+        "advice": advice,
         "disclaimer": RESULT_DISCLAIMER,
         "is_mock_data": _data_source.is_mock_data(),
     })
