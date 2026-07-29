@@ -55,68 +55,6 @@
     "discoloration_sat_min": 40,
     "sentinel_no_visible": -1.0
   },
-  "mock": {
-    "_comment": "Knobs controlling how the synthetic UV images are generated. Retune freely once real photos are available and comparison shows the mock is unrealistic.",
-    "background_level": [
-      6,
-      2,
-      10
-    ],
-    "base_onion_color_mean": [
-      80,
-      30,
-      90
-    ],
-    "base_onion_color_jitter": 12,
-    "base_noise_sigma": 6,
-    "per_view_brightness_jitter": 0.08,
-    "fungal_dots": {
-      "_comment": "Small sharp-edged bright dots simulating real UV fluorescence at degrading tissue: clusters of small distinct spots, not one big blurry patch. Severity (mild/severe) is rolled ONCE per head and applies to all 4 views, since it's a property of the head, not the camera angle.",
-      "color": [
-        245,
-        245,
-        235
-      ],
-      "dot_radius_frac_min": 0.008,
-      "dot_radius_frac_max": 0.018,
-      "edge_transition_px": 1.5,
-      "intensity_min": 170,
-      "intensity_max": 255,
-      "per_view_visibility_prob": 0.75,
-      "min_dot_separation_factor": 1.4,
-      "placement_max_radius_frac": 0.82,
-      "severity_severe_probability": 0.5,
-      "mild": {
-        "_comment": "หัวระยะเริ่ม: จุดเล็กไม่กี่จุด กระจายเบาบาง",
-        "n_dots_min": 1,
-        "n_dots_max": 3,
-        "n_clusters": 1,
-        "cluster_spread_frac": 0.1
-      },
-      "severe": {
-        "_comment": "หัวที่เป็นเยอะ: หลายจุดเล็กเกาะกลุ่มหนาแน่นในหนึ่งหรือหลายกลุ่ม",
-        "n_dots_per_cluster_min": 5,
-        "n_dots_per_cluster_max": 10,
-        "n_clusters_min": 1,
-        "n_clusters_max": 3,
-        "cluster_spread_frac": 0.055
-      }
-    },
-    "hard_negative_blotch": {
-      "_comment": "Large blurry stain/bruise-like blob added to a SUBSET of NEGATIVE (compactdry=0) heads — not fungal, just a distractor blemish. Deliberately large + soft-edged so features must separate it from the small sharp fungal dots above. Also rolled once per head, applied consistently across its 4 views (a physical stain doesn't disappear with camera angle).",
-      "probability": 0.4,
-      "color": [
-        120,
-        90,
-        55
-      ],
-      "radius_frac_min": 0.05,
-      "radius_frac_max": 0.15,
-      "intensity_min": 60,
-      "intensity_max": 130,
-      "per_view_visibility_prob": 0.9
-    }
-  },
   "blob_detection": {
     "_comment": "Parameters for src/blob_features.py. Dual-scale masked-baseline detector: a FINE local baseline (window smaller than a stain, bigger than a dot) isolates high-frequency small-sharp anomalies; a COARSE baseline (window bigger than the largest stain) isolates the low-frequency brightening a stain/blotch causes. Both baselines are computed with ROI-masked normalized filtering so background just outside the ROI never leaks into the average near the edge.",
     "fine_filter_size_px": 41,
@@ -202,35 +140,6 @@
     "threshold_cv_repeats": 20,
     "_threshold_note": "GradientBoosting has no out-of-bag estimate, so the decision threshold comes from repeated cross-validated out-of-fold probabilities instead. More repeats = a steadier threshold; 20 was enough for it to stop moving.",
     "_param_grid_note": "max_depth=3 was removed after measurement: on 20 held-out fold shuffles it scored kappa 0.570 and failed the bar, while every remaining option scored 0.614-0.629 and passed. Leaving a known-worse option in the grid only creates a way for a future retrain to silently pick it. See reports/experiments/shipped_params.csv."
-  },
-  "camera": {
-    "_comment": "Capture settings for src/camera.py (runs on the Pi). Shared by the web app AND by calibrate.py / capture_lock_test.py, which import load_config/open_camera/capture_frame from the same module.",
-    "device_path": "/dev/video0",
-    "width": 1280,
-    "height": 720,
-    "fourcc": "YUYV",
-    "warmup_frames": 8,
-    "warmup_note": "Frames read immediately after a control change still show the OLD settings; these are read and discarded so the first real capture reflects the locked values. Raise it if capture_lock_test.py reports stddev >= 1.0."
-  },
-  "controls": {
-    "_comment": "v4l2-ctl control names and values for THIS camera (names and ranges verified with `v4l2-ctl -d /dev/video0 --list-ctrls`). Applied by src/camera.py via v4l2-ctl, then read back and verified — cv2's cap.set() is silently ignored by many drivers. Every auto-adjustment is off on purpose: UV fluorescence intensity IS the measurement, so a camera that re-exposes or re-focuses between shots makes two identical onions produce different features.",
-    "_ranges": "auto_exposure 0-3 (1=Manual, 3=AperturePriority) | exposure_time_absolute 1-10000 | gain 0-128 | white_balance_temperature 2800-6500 | brightness -64..64 | contrast 0-100 | saturation 0-128 | gamma 100-500 | sharpness 0-100 | backlight_compensation 0-2 | focus_absolute 0-1000 | power_line_frequency 0-2 (1=50Hz)",
-    "_NEEDS_CALIBRATION": "exposure_time_absolute, gain and focus_absolute below are the camera's factory defaults, NOT calibrated values. Run calibrate.py and capture_lock_test.py against the real UV box and replace them before collecting any dataset.",
-    "auto_exposure": 1,
-    "white_balance_automatic": 0,
-    "focus_automatic_continuous": 0,
-    "exposure_dynamic_framerate": 0,
-    "exposure_time_absolute": 166,
-    "gain": 64,
-    "white_balance_temperature": 4600,
-    "focus_absolute": 120,
-    "brightness": 0,
-    "contrast": 36,
-    "saturation": 80,
-    "gamma": 300,
-    "sharpness": 76,
-    "backlight_compensation": 0,
-    "power_line_frequency": 1
   },
   "capture_sequence": {
     "_comment": "Single UV frame per head. Was four angles; reduced to one, so the feature set no longer carries _viewmean/_viewmax pairs (with one view they are identical). To go back to multiple angles: add steps here AND set samples.n_views to match, then regenerate mock data and retrain — the feature names change with the view count.",

@@ -48,8 +48,11 @@ from common import ROOT, load_config
 
 FEATURES_PATH = ROOT / "data" / "features.csv"
 REPORTS_DIR = ROOT / "reports"
-# Same signal the web app uses for its "mock data" badge: the generator writes
-# this file, real captures never do. One source of truth beats two.
+# Same signal the web app uses for its "mock data" badge. Nothing writes this
+# file today — the mock generator was deleted once 60 real heads replaced it —
+# so every branch below takes the real-data path. Kept as a file test rather
+# than deleted so the warnings return by themselves if a synthetic set is ever
+# reintroduced.
 MOCK_MARKER_PATH = ROOT / "data" / "mock_metadata.csv"
 # Written by select_features.py. Absent = train on every column in
 # features.csv, which is the right default before any selection has been run.

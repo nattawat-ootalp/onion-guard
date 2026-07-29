@@ -2,11 +2,11 @@
 Data layer for the OnionGuard web app.
 
 Everything the web pages need is behind the DataSource interface, so the
-Flask app never reads a CSV path or a Supabase table directly. Today the
-only implementation is LocalFileDataSource (reads data/*.csv and
-reports/*), which is all Phase 6 needs while the project is still on mock
-data. When Phase 5 (Supabase) happens, add a SupabaseDataSource with the
-same methods and change get_data_source() — no route or template changes.
+Flask app never reads a CSV path or a Supabase table directly.
+LocalFileDataSource reads data/*.csv and reports/*; SupabaseDataSource
+extends it and takes the scan records from the database instead.
+get_data_source() picks between them on whether credentials are present, so
+development works offline and a database outage degrades rather than fails.
 
 Every method returns plain Python dicts/lists (never a DataFrame), because
 that's the shape a Supabase client would return too. Keeping the return
@@ -111,6 +111,18 @@ class LocalFileDataSource(DataSource):
             samples.append(entry)
         return samples
 
+    def _count_images(self, n_samples):
+        """How many source photos back the dataset.
+
+        Counts the local images/ folder, which held the generated set. Real
+        photos are not stored locally — they go to Supabase Storage on upload
+        — so SupabaseDataSource overrides this. Returning the local count here
+        keeps this class usable on its own without pretending to know about a
+        database it has no handle on.
+        """
+        images_dir = ROOT / "images"
+        return len(list(images_dir.glob("*.png"))) if images_dir.exists() else 0
+
     def get_dataset_stats(self):
         samples = self.get_samples()
         total = len(samples)
@@ -118,10 +130,7 @@ class LocalFileDataSource(DataSource):
         n_neg = sum(1 for s in samples if s["compactdry"] == 0)
         n_unlabelled = sum(1 for s in samples if s["compactdry"] is None)
 
-        n_views = 0
-        images_dir = ROOT / "images"
-        if images_dir.exists():
-            n_views = len(list(images_dir.glob("*.png")))
+        n_views = self._count_images(total)
 
         labelled = n_pos + n_neg
         return {
@@ -201,8 +210,12 @@ class LocalFileDataSource(DataSource):
         }
 
     def is_mock_data(self):
-        """Mock as long as the generator's debug metadata file is present —
-        generate_mock_data.py writes it, and real captures never would."""
+        """Always False now: the dataset is 60 real photographed heads.
+
+        The check survives as a file test rather than a hardcoded False so the
+        "mock data" badge comes back on its own if anyone ever regenerates a
+        synthetic set. The generator itself was removed once real photos
+        replaced it (see git history for src/generate_mock_data.py)."""
         return (self.data_dir / "mock_metadata.csv").exists()
 
 
@@ -249,6 +262,20 @@ class SupabaseDataSource(LocalFileDataSource):
                 entry["features"][col] = _to_float(feats.get(col))
             samples.append(entry)
         return samples
+
+    def _count_images(self, n_samples):
+        """One stored photo per scan row, counted from the rows themselves.
+
+        The local images/ folder the parent counts held the generated set and
+        is gone; real uploads live in Supabase Storage. Counting rows that
+        actually carry an image_path avoids claiming a photo exists for a scan
+        whose upload failed.
+        """
+        try:
+            rows = self.client.select("scans", columns="image_path")
+        except Exception:  # noqa: BLE001 - a stat is never worth a 500
+            return 0
+        return sum(1 for r in rows if r.get("image_path"))
 
     def is_mock_data(self):
         """Mock while the deployed model was trained on generated images.
