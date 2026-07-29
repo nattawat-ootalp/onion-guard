@@ -350,7 +350,7 @@ def load_upload_to_bgr(file_storage, cfg, kind="uv"):
 def check_out_of_distribution(features, model_cfg, tolerance=0.25):
     """Are the measured features inside the range the model was trained on?
 
-    A Random Forest cannot extrapolate. A value well beyond the largest one it
+    A tree ensemble cannot extrapolate. A value well beyond the largest one it
     saw during training falls in the same leaf as that largest value, so the
     predicted probability simply stops responding — it does not keep rising,
     and it gives no signal that the input was unusual. Real photos have
@@ -408,7 +408,7 @@ def check_out_of_distribution(features, model_cfg, tolerance=0.25):
         "n_outliers": len(outliers),
         "detail": detail,
         "message": f"ค่าที่วัดได้ {len(outliers)} ตัวอยู่นอกช่วงที่โมเดลเคยเห็นตอนฝึก ({detail}) "
-                   "— Random Forest ประมาณค่านอกช่วงไม่ได้ ผลและเปอร์เซ็นต์ที่ได้จึงเชื่อถือไม่ได้",
+                   "— โมเดลประมาณค่านอกช่วงที่เคยเห็นไม่ได้ ผลและเปอร์เซ็นต์ที่ได้จึงเชื่อถือไม่ได้",
     }
 
 

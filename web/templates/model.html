@@ -117,7 +117,8 @@
           <td class="num">{{ "%.3f"|format(f.specificity) }}</td>
           <td class="num">{{ "%.3f"|format(f.f1) }}</td>
           <td class="num">{{ "%.3f"|format(f.kappa) }}</td>
-          <td class="num">{{ "%.3f"|format(f.oob_score) }}</td>
+          {# Only bagged models (random_forest) have an OOB estimate. #}
+          <td class="num">{{ "%.3f"|format(f.oob_score) if f.oob_score else "—" }}</td>
         </tr>
         {% endfor %}
       </tbody>
@@ -133,11 +134,22 @@
       <tbody>
         <tr><td>จำนวนฟีเจอร์ที่ใช้</td><td class="num">{{ info.n_features }}</td></tr>
         <tr><td>เกณฑ์ตัดสิน (decision threshold)</td><td class="num">{{ "%.3f"|format(info.decision_threshold) }}</td></tr>
+        {% if info.model_type %}
+        <tr><td>ชนิดโมเดล</td><td class="num">{{ info.model_type }}</td></tr>
+        {% endif %}
         <tr><td>จำนวนต้นไม้ (n_estimators)</td><td class="num">{{ info.best_params.n_estimators }}</td></tr>
         <tr><td>ความลึกสูงสุด (max_depth)</td><td class="num">{{ info.best_params.max_depth if info.best_params.max_depth is not none else "ไม่จำกัด" }}</td></tr>
+        {# Parameters below only exist for some model types. #}
+        {% if info.best_params.learning_rate is defined %}
+        <tr><td>learning_rate</td><td class="num">{{ info.best_params.learning_rate }}</td></tr>
+        {% endif %}
+        {% if info.best_params.min_samples_leaf is defined %}
         <tr><td>min_samples_leaf</td><td class="num">{{ info.best_params.min_samples_leaf }}</td></tr>
+        {% endif %}
         <tr><td>random_state</td><td class="num">{{ info.random_seed }}</td></tr>
+        {% if info.oob_score %}
         <tr><td>OOB score (ฝึกด้วยข้อมูลทั้งหมด)</td><td class="num">{{ "%.3f"|format(info.oob_score) }}</td></tr>
+        {% endif %}
         <tr><td>จำนวนตัวอย่างที่ใช้ฝึกโมเดลสุดท้าย</td><td class="num">{{ info.trained_on_n_samples }}</td></tr>
       </tbody>
     </table>

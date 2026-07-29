@@ -74,15 +74,17 @@
       "p95": 0.19418465346097946
     }
   },
-  "_ranges_note": "min/max/p05/p95 of each feature across the training set. Used at predict time to detect out-of-distribution input, which a Random Forest cannot signal on its own.",
-  "decision_threshold": 0.5909090909090909,
+  "_ranges_note": "min/max/p05/p95 of each feature across the training set. Used at predict time to detect out-of-distribution input, which a tree ensemble cannot signal on its own.",
+  "decision_threshold": 0.6746431704811802,
+  "_threshold_note": "Youden's J on out-of-fold probabilities averaged over 20 CV repeats \u2014 never on the model's own training rows.",
+  "model_type": "gradient_boosting",
   "random_seed": 42,
   "best_params": {
-    "n_estimators": 400,
-    "max_depth": 10,
-    "min_samples_leaf": 1
+    "max_depth": 2,
+    "n_estimators": 50,
+    "learning_rate": 0.2
   },
-  "oob_score": 0.7833333333333333,
+  "oob_score": null,
   "trained_on_n_samples": 60,
   "trained_on_mock": false,
   "note": "Trained on 60 real heads photographed under 365nm UV, labelled from CompactDry YM. Small sample: see reports/phase3_cv_fold_metrics.csv for the cross-validated estimate and its spread before quoting any accuracy figure."

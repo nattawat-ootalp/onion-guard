@@ -1,6 +1,6 @@
 """
 Phase 4a: error analysis (from Phase 3's out-of-fold predictions) + train
-the final Random Forest on ALL 60 samples + save it for deployment.
+the final classifier on ALL 60 samples + save it for deployment.
 
 Error analysis uses the OOF predictions from train.py's CV (each sample was
 predicted exactly once, by a model that never saw it in training) rather
@@ -9,13 +9,15 @@ than predictions from the final all-data model, which would trivially
 as 0) get special attention since that's the costly failure mode here —
 a real infected head reported as healthy.
 
-Decision threshold: derived from the final model's own out-of-bag
-predictions (oob_decision_function_) via Youden's J, the same method
-Phase 2 used for the univariate baseline — this avoids picking a cutoff
-from in-sample predictions that would look artificially perfect on mock
-data.
+Decision threshold: derived via Youden's J from out-of-fold probabilities
+averaged over repeated cross-validation, the same method Phase 2 used for
+the univariate baseline. This was RandomForest's oob_decision_function_
+until the model became configurable — GradientBoosting does not bag its
+trees and so has no OOB estimate, and either way the point is the same:
+never pick a cutoff from rows the model trained on.
 
-Saves models/model.joblib (the fitted RandomForestClassifier) and
+Saves models/model.joblib (the fitted classifier, whichever type
+config.json's train.model.type names) and
 models/model_config.json (feature order, decision threshold, and the
 hyperparameters/seed used) — kept separate from model.joblib itself and
 from config.json's image-processing parameters so predict.py's threshold
@@ -26,11 +28,13 @@ import json
 import joblib
 import numpy as np
 import pandas as pd
-from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import roc_curve
 
 from common import ROOT, load_config
-from train import select_hyperparams, resolve_feature_cols, LABEL_COL, ID_COL
+from train import (
+    make_model, oof_probabilities, resolve_feature_cols, select_hyperparams,
+    LABEL_COL, ID_COL,
+)
 
 FEATURES_PATH = ROOT / "data" / "features.csv"
 REPORTS_DIR = ROOT / "reports"
@@ -77,27 +81,36 @@ def train_final_model(cfg):
     groups = df[ID_COL].values
 
     best_params, inner_cv_score = select_hyperparams(X, y, groups, cfg)
+    model_type = cfg["train"].get("model", {}).get("type", "random_forest")
     print(f"=== Final model (trained on all {len(df)} samples) ===")
+    print(f"Model type: {model_type}")
     print(f"Selected hyperparameters (inner CV on full data): {best_params} (acc={inner_cv_score:.3f})")
 
-    rf = RandomForestClassifier(random_state=cfg["random_seed"], oob_score=True,
-                                 bootstrap=True, **best_params)
-    rf.fit(X, y)
-    print(f"OOB score on full-data fit: {rf.oob_score_:.3f}")
+    model = make_model(cfg, params=best_params)
+    model.fit(X, y)
+    oob = getattr(model, "oob_score_", None)
+    if oob is not None:
+        print(f"OOB score on full-data fit: {oob:.3f}")
 
-    oob_proba = rf.oob_decision_function_[:, 1]
-    fpr, tpr, thresholds = roc_curve(y, oob_proba)
+    # Threshold comes from out-of-fold probabilities, never from the fitted
+    # model's own training rows — those would look near-perfect and put the
+    # cutoff in the wrong place.
+    repeats = cfg["train"].get("threshold_cv_repeats", 20)
+    print(f"Computing out-of-fold probabilities for the threshold ({repeats} CV repeats)...")
+    cv_proba = oof_probabilities(X, y, groups, cfg, best_params, repeats=repeats)
+
+    fpr, tpr, thresholds = roc_curve(y, cv_proba)
     j_scores = tpr - fpr
     best_idx = int(np.argmax(j_scores))
     decision_threshold = float(thresholds[best_idx])
-    print(f"Decision threshold (Youden's J on OOB predictions): {decision_threshold:.3f} "
-          f"(OOB sensitivity={tpr[best_idx]:.3f}, specificity={1 - fpr[best_idx]:.3f})")
+    print(f"Decision threshold (Youden's J on out-of-fold predictions): {decision_threshold:.3f} "
+          f"(sensitivity={tpr[best_idx]:.3f}, specificity={1 - fpr[best_idx]:.3f})")
 
     MODEL_DIR.mkdir(parents=True, exist_ok=True)
-    joblib.dump(rf, MODEL_PATH)
+    joblib.dump(model, MODEL_PATH)
     print(f"Wrote {MODEL_PATH}")
 
-    # Range each feature actually spanned in training. A Random Forest cannot
+    # Range each feature actually spanned in training. No tree ensemble can
     # extrapolate: a value far beyond the largest one it ever saw lands in the
     # same leaf as that largest value, so the probability stops responding.
     # Recording the ranges lets predict flag "this input is outside what the
@@ -115,12 +128,15 @@ def train_final_model(cfg):
         "feature_names": feature_cols,
         "training_feature_ranges": ranges,
         "_ranges_note": "min/max/p05/p95 of each feature across the training set. Used at "
-                        "predict time to detect out-of-distribution input, which a Random "
-                        "Forest cannot signal on its own.",
+                        "predict time to detect out-of-distribution input, which a tree "
+                        "ensemble cannot signal on its own.",
         "decision_threshold": decision_threshold,
+        "_threshold_note": "Youden's J on out-of-fold probabilities averaged over "
+                           f"{repeats} CV repeats — never on the model's own training rows.",
+        "model_type": model_type,
         "random_seed": cfg["random_seed"],
         "best_params": best_params,
-        "oob_score": rf.oob_score_,
+        "oob_score": oob,
         "trained_on_n_samples": int(len(df)),
         "trained_on_mock": MOCK_MARKER_PATH.exists(),
         "note": ("Trained on 100% MOCK data as of this run — a pipeline proof, not yet fit for "

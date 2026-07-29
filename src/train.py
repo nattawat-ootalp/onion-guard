@@ -1,5 +1,7 @@
 """
-Phase 3: Random Forest with StratifiedGroupKFold 5-fold CV.
+Phase 3: classifier evaluation with StratifiedGroupKFold 5-fold CV.
+
+Which classifier is set by config.json's train.model.type (see make_model).
 
 group=sample_code is kept per the report's method even though, in this
 project's current shape, each row in features.csv is ALREADY one head (the
@@ -9,9 +11,16 @@ kept so the CV code stays correct for free if a future revision ever goes
 back to per-view rows.
 
 Per-fold hyperparameter selection uses inner cross-validation on that
-fold's training split only (never touching the held-out test split), and
-also fits the chosen config with oob_score=True as a second, independent
-consistency check on the same training data ("OOB+CV" per the report).
+fold's training split only, never touching the held-out test split. With
+random_forest an out-of-bag score is also recorded as a second, independent
+check on the same training data ("OOB+CV" per the report); gradient_boosting
+does not bag its trees, so that column is empty for it.
+
+This script uses ONE fold shuffle, which is what the report's method
+specifies. With 12 heads per test fold that single shuffle is noisy: the
+same model scores kappa 0.544 here and 0.620 averaged over 20 shuffles.
+reports/experiments/verify_finalists.csv holds the repeated-shuffle
+estimate, and that is the number to quote.
 
 IMPORTANT — how much the numbers below mean depends on the dataset. While
 data/mock_metadata.csv exists the rows are generated images, and the metrics
@@ -29,7 +38,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.colors import LinearSegmentedColormap
 from sklearn.model_selection import StratifiedGroupKFold, StratifiedKFold, cross_val_score
-from sklearn.ensemble import RandomForestClassifier
+from sklearn.ensemble import GradientBoostingClassifier, RandomForestClassifier
 from sklearn.metrics import (
     accuracy_score, precision_score, recall_score, f1_score,
     cohen_kappa_score, confusion_matrix,
@@ -80,18 +89,64 @@ GRID_COLOR = "#e1e0d9"
 TEXT_PRIMARY = "#0b0b0b"
 
 
+MODEL_TYPES = {
+    "gradient_boosting": GradientBoostingClassifier,
+    "random_forest": RandomForestClassifier,
+}
+
+
+def make_model(cfg, params=None, seed=None):
+    """Build the classifier named in config.json's train.model.type.
+
+    One factory for CV, the final fit, and any experiment, so the model that
+    gets shipped is the same one the reported metrics describe. Swapping the
+    classifier is a config edit; only the params in the grid have to change
+    with it.
+    """
+    train_cfg = cfg["train"]
+    model_cfg = train_cfg.get("model", {})
+    kind = model_cfg.get("type", "random_forest")
+    if kind not in MODEL_TYPES:
+        raise SystemExit(f"train.model.type ไม่รู้จัก: {kind} "
+                         f"(รองรับ: {', '.join(MODEL_TYPES)})")
+    params = model_cfg.get("params", {}) if params is None else params
+    return MODEL_TYPES[kind](random_state=seed if seed is not None else cfg["random_seed"],
+                             **params)
+
+
 def select_hyperparams(X_train, y_train, groups_train, cfg):
     train_cfg = cfg["train"]
     inner_cv = StratifiedKFold(n_splits=train_cfg["inner_n_splits"], shuffle=True,
                                 random_state=cfg["random_seed"])
     best_score, best_params = -np.inf, None
     for params in train_cfg["param_grid"]:
-        rf = RandomForestClassifier(random_state=cfg["random_seed"], **params)
-        scores = cross_val_score(rf, X_train, y_train, cv=inner_cv, scoring="accuracy")
+        model = make_model(cfg, params=params)
+        scores = cross_val_score(model, X_train, y_train, cv=inner_cv, scoring="accuracy")
         mean_score = scores.mean()
         if mean_score > best_score:
             best_score, best_params = mean_score, params
     return best_params, best_score
+
+
+def oof_probabilities(X, y, groups, cfg, params, repeats=None):
+    """Averaged out-of-fold P(positive) per sample, over repeated CV.
+
+    Replaces RandomForest's oob_decision_function_, which GradientBoosting has
+    no equivalent of. Serves the same purpose — a probability for each sample
+    from a model that did not train on it — so the decision threshold is never
+    picked from in-sample predictions. Averaging over several shuffles keeps
+    the threshold from riding on one lucky split.
+    """
+    repeats = repeats or cfg["train"].get("threshold_cv_repeats", 20)
+    total = np.zeros(len(y))
+    for r in range(repeats):
+        cv = StratifiedGroupKFold(n_splits=cfg["train"]["outer_n_splits"], shuffle=True,
+                                  random_state=cfg["random_seed"] + r)
+        for tr, te in cv.split(X, y, groups):
+            model = make_model(cfg, params=params)
+            model.fit(X[tr], y[tr])
+            total[te] += model.predict_proba(X[te])[:, 1]
+    return total / repeats
 
 
 def fold_metrics(y_true, y_pred):
@@ -128,11 +183,10 @@ def run_cv(df, feature_cols, cfg):
 
         best_params, inner_cv_score = select_hyperparams(X_train, y_train, groups_train, cfg)
 
-        rf = RandomForestClassifier(random_state=cfg["random_seed"], oob_score=True,
-                                     bootstrap=True, **best_params)
-        rf.fit(X_train, y_train)
-        y_pred = rf.predict(X_test)
-        y_proba = rf.predict_proba(X_test)[:, 1]
+        model = make_model(cfg, params=best_params)
+        model.fit(X_train, y_train)
+        y_pred = model.predict(X_test)
+        y_proba = model.predict_proba(X_test)[:, 1]
 
         m = fold_metrics(y_test, y_pred)
         m.update({
@@ -141,18 +195,20 @@ def run_cv(df, feature_cols, cfg):
             "n_test": len(test_idx),
             "best_params": best_params,
             "inner_cv_accuracy": inner_cv_score,
-            "oob_score": rf.oob_score_,
+            # Only RandomForest bags its trees, so only it has an OOB estimate.
+            "oob_score": getattr(model, "oob_score_", None),
         })
         fold_rows.append(m)
         total_cm += confusion_matrix(y_test, y_pred, labels=[0, 1])
-        importances.append(rf.feature_importances_)
+        importances.append(model.feature_importances_)
 
         for sc, yt, yp, proba in zip(ids[test_idx], y_test, y_pred, y_proba):
             oof_rows.append({"sample_code": sc, "fold": fold_i, "y_true": int(yt),
                               "y_pred": int(yp), "y_proba": float(proba)})
 
+        oob_txt = f" oob={m['oob_score']:.3f}" if m["oob_score"] is not None else ""
         print(f"Fold {fold_i}: train={len(train_idx)} test={len(test_idx)} "
-              f"params={best_params} inner_cv_acc={inner_cv_score:.3f} oob={rf.oob_score_:.3f}")
+              f"params={best_params} inner_cv_acc={inner_cv_score:.3f}{oob_txt}")
         print(f"         accuracy={m['accuracy']:.3f} recall={m['recall']:.3f} "
               f"specificity={m['specificity']:.3f} precision={m['precision']:.3f} "
               f"f1={m['f1']:.3f} kappa={m['kappa']:.3f}")
@@ -254,7 +310,8 @@ def main():
 
     is_mock = MOCK_MARKER_PATH.exists()
 
-    print("=== Phase 3: Random Forest, StratifiedGroupKFold(5) ===")
+    model_type = cfg["train"].get("model", {}).get("type", "random_forest")
+    print(f"=== Phase 3: {model_type}, StratifiedGroupKFold(5) ===")
     if is_mock:
         print("REMINDER: dataset is 100% mock — numbers below prove the pipeline runs, "
               "they are NOT a real accuracy estimate.\n")

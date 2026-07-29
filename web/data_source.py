@@ -193,7 +193,9 @@ class LocalFileDataSource(DataSource):
             "decision_threshold": cfg.get("decision_threshold"),
             "n_features": len(cfg.get("feature_names", [])),
             "best_params": cfg.get("best_params", {}),
+            "model_type": cfg.get("model_type"),
             "random_seed": cfg.get("random_seed"),
+            # None for models that do not bag (gradient_boosting).
             "oob_score": cfg.get("oob_score"),
             "trained_on_n_samples": cfg.get("trained_on_n_samples"),
         }

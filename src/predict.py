@@ -23,7 +23,7 @@ is enough, no code changes.
 
 Caveat that this file's import list can't make disappear: joblib.load()
 still needs scikit-learn importable at runtime to reconstruct the
-RandomForestClassifier object. That's an unavoidable transitive dependency
+fitted estimator class. That's an unavoidable transitive dependency
 of loading a pickled sklearn model — the Pi needs scikit-learn installed
 even though predict.py itself never imports it directly.
 """
