@@ -99,6 +99,19 @@ class SupabaseClient:
         return self._request("PATCH", f"/rest/v1/{table}", data=patch,
                              headers={"Prefer": "return=representation"}, query=query)
 
+    def delete(self, table, match):
+        """Delete rows matching every key in `match` (equality only).
+
+        A non-empty match is required: PostgREST happily deletes the whole
+        table when given no filter, and nothing in this project ever wants
+        that.
+        """
+        if not match:
+            raise ValueError("delete ต้องระบุเงื่อนไข ไม่งั้นจะลบทั้งตาราง")
+        query = {k: f"eq.{v}" for k, v in match.items()}
+        return self._request("DELETE", f"/rest/v1/{table}",
+                             headers={"Prefer": "return=representation"}, query=query)
+
     def select(self, table, *, columns="*", order=None, limit=None, filters=None):
         query = {"select": columns}
         if order:
