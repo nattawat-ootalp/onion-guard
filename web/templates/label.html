@@ -59,6 +59,7 @@
           <th>รหัสตัวอย่าง</th>
           <th>วันเวลาที่สแกน</th>
           <th>ระบบทำนาย</th>
+          <th>รูปภาพ</th>
           <th>ผล CompactDry (ground truth)</th>
         </tr>
       </thead>
@@ -123,6 +124,21 @@
         }
       } else { pred.innerHTML = '<span class="muted">—</span>'; }
       tr.appendChild(pred);
+
+      const img = document.createElement('td');
+      if (r.image_path) {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'btn btn-secondary';
+        btn.textContent = 'ดูรูป';
+        btn.addEventListener('click', function () {
+          window.open('/api/scan-image?path=' + encodeURIComponent(r.image_path), '_blank');
+        });
+        img.appendChild(btn);
+      } else {
+        img.innerHTML = '<span class="muted">—</span>';
+      }
+      tr.appendChild(img);
 
       const act = document.createElement('td');
       act.appendChild(makeControls(r));

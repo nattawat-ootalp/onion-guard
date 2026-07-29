@@ -41,7 +41,7 @@ from pathlib import Path
 
 import cv2
 import numpy as np
-from flask import Flask, jsonify, render_template, request, send_from_directory
+from flask import Flask, jsonify, redirect, render_template, request, send_from_directory
 from PIL import Image, ImageOps, ExifTags
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -690,6 +690,29 @@ def api_scans():
         return jsonify({"rows": rows})
     except Exception as exc:  # noqa: BLE001
         return jsonify({"error": str(exc)[:200], "rows": []}), 500
+
+
+@app.route("/api/scan-image")
+def api_scan_image():
+    """Mint a short-lived signed URL for a scan's stored photo and redirect
+    to it. The bucket is private (see supabase_client.signed_url), so the
+    label page cannot just link to the path directly — it has to go through
+    the server, which holds the key that can sign it."""
+    path = request.args.get("path")
+    if not path:
+        return jsonify({"error": "ไม่ได้ระบุ path ของรูป"}), 400
+
+    client = getattr(_data_source, "client", None)
+    if client is None:
+        return jsonify({"error": "ยังไม่ได้ต่อ Supabase"}), 503
+
+    try:
+        url = client.signed_url("scans", path)
+        if not url:
+            return jsonify({"error": "สร้างลิงก์รูปไม่สำเร็จ"}), 500
+        return redirect(url)
+    except Exception as exc:  # noqa: BLE001
+        return jsonify({"error": str(exc)[:200]}), 500
 
 
 @app.route("/api/label", methods=["POST"])
