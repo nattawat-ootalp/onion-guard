@@ -38,6 +38,7 @@ OOF_PATH = REPORTS_DIR / "phase3_oof_predictions.csv"
 MODEL_DIR = ROOT / "models"
 MODEL_PATH = MODEL_DIR / "model.joblib"
 MODEL_CONFIG_PATH = MODEL_DIR / "model_config.json"
+MOCK_MARKER_PATH = ROOT / "data" / "mock_metadata.csv"
 
 
 def error_analysis():
@@ -57,9 +58,12 @@ def error_analysis():
         print(false_pos.to_string(index=False))
     if len(wrong) == 0:
         print("Nothing to list — 0 misclassifications, consistent with Phase 3's clean CV result. "
-              "This is a mock-data artifact (positives are deterministically detectable), NOT a "
-              "claim the real classifier will have zero false negatives. Re-run this analysis "
-              "once real photos are in — that's when this list will actually mean something.")
+              + ("This is a mock-data artifact (positives are deterministically detectable), NOT a "
+                 "claim the real classifier will have zero false negatives. Re-run this analysis "
+                 "once real photos are in — that's when this list will actually mean something."
+                 if MOCK_MARKER_PATH.exists() else
+                 "On real data with this few heads, a perfect score is more likely to mean the "
+                 "split was lucky than that the classifier is perfect."))
     print()
 
 
@@ -117,8 +121,13 @@ def train_final_model(cfg):
         "best_params": best_params,
         "oob_score": rf.oob_score_,
         "trained_on_n_samples": int(len(df)),
-        "note": "Trained on 100% MOCK data as of this run — a pipeline proof, not yet fit for "
-                "real classification. Retrain once real photos replace data/features.csv.",
+        "trained_on_mock": MOCK_MARKER_PATH.exists(),
+        "note": ("Trained on 100% MOCK data as of this run — a pipeline proof, not yet fit for "
+                 "real classification. Retrain once real photos replace data/features.csv."
+                 if MOCK_MARKER_PATH.exists() else
+                 f"Trained on {len(df)} real heads photographed under 365nm UV, labelled from "
+                 "CompactDry YM. Small sample: see reports/phase3_cv_fold_metrics.csv for the "
+                 "cross-validated estimate and its spread before quoting any accuracy figure."),
     }
     with open(MODEL_CONFIG_PATH, "w") as f:
         json.dump(model_cfg, f, indent=2)

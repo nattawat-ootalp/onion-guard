@@ -13,11 +13,12 @@ fold's training split only (never touching the held-out test split), and
 also fits the chosen config with oob_score=True as a second, independent
 consistency check on the same training data ("OOB+CV" per the report).
 
-IMPORTANT — read this before trusting any number below: the dataset is
-still 100% mock (real photos aren't ready yet). Accuracy/Kappa/etc. here
-only prove the training+evaluation code runs correctly end-to-end; they
-carry no information about how the real classifier will perform. Don't
-compare them to the book's pass/fail bar as if they meant anything.
+IMPORTANT — how much the numbers below mean depends on the dataset. While
+data/mock_metadata.csv exists the rows are generated images, and the metrics
+only prove the training+evaluation code runs end-to-end; they say nothing
+about real performance. Once real photos replace it that file is gone and
+the metrics are a genuine (if small-sample) estimate. Every printout below
+states which case it is, so a report figure is never quoted out of context.
 """
 import numpy as np
 import pandas as pd
@@ -36,6 +37,9 @@ from common import ROOT, load_config
 
 FEATURES_PATH = ROOT / "data" / "features.csv"
 REPORTS_DIR = ROOT / "reports"
+# Same signal the web app uses for its "mock data" badge: the generator writes
+# this file, real captures never do. One source of truth beats two.
+MOCK_MARKER_PATH = ROOT / "data" / "mock_metadata.csv"
 
 LABEL_COL = "compactdry"
 ID_COL = "sample_code"
@@ -220,9 +224,19 @@ def main():
     df = pd.read_csv(FEATURES_PATH)
     feature_cols = [c for c in df.columns if c not in (ID_COL, LABEL_COL)]
 
+    is_mock = MOCK_MARKER_PATH.exists()
+
     print("=== Phase 3: Random Forest, StratifiedGroupKFold(5) ===")
-    print("REMINDER: dataset is 100% mock — numbers below prove the pipeline runs, "
-          "they are NOT a real accuracy estimate.\n")
+    if is_mock:
+        print("REMINDER: dataset is 100% mock — numbers below prove the pipeline runs, "
+              "they are NOT a real accuracy estimate.\n")
+    else:
+        print(f"Dataset: REAL photos, {len(df)} heads "
+              f"({int((df[LABEL_COL] == 1).sum())} พบ / {int((df[LABEL_COL] == 0).sum())} ไม่พบ). "
+              f"{len(feature_cols)} features.")
+        print(f"Sample size is small — {len(df) / len(feature_cols):.1f} heads per feature — so "
+              "every metric below carries a wide confidence interval. Treat the SD across folds "
+              "as the honest error bar, not the mean alone.\n")
 
     fold_df, total_cm, mean_importance, oof_df = run_cv(df, feature_cols, cfg)
     oof_df.to_csv(REPORTS_DIR / "phase3_oof_predictions.csv", index=False)
@@ -270,20 +284,25 @@ def main():
     if watch_rows["mean_importance"].max() < imp_df["mean_importance"].median():
         print("NOTE: NDFI/A_low importances are below the median feature — consistent with "
               "the Phase 2 univariate AUC finding. Keeping them in the feature list as agreed "
-              "(not deleting); revisit once real photos are available, since a formula/behavior "
-              "that looks weak on mock data may or may not hold on real fluorescence.")
+              + ("(not deleting); revisit once real photos are available, since a formula/behavior "
+                 "that looks weak on mock data may or may not hold on real fluorescence."
+                 if is_mock else
+                 "(not deleting). This now holds on REAL fluorescence too, so they are candidates "
+                 "for removal — with this few heads per feature, dropping dead weight helps."))
     else:
         print("NOTE: NDFI/A_low actually show non-trivial importance here — worth a closer look "
               "before assuming they're safe to ignore.")
 
-    print("\n=== Report's pass/fail bar (NOT meaningful on mock data, checked only for completeness) ===")
+    print("\n=== Report's pass/fail bar ==="
+          + (" (NOT meaningful on mock data, checked only for completeness)" if is_mock else ""))
     train_cfg = cfg["train"]
     mean_acc, mean_rec, mean_kappa = summary.loc["accuracy", "mean"], summary.loc["recall", "mean"], summary.loc["kappa", "mean"]
     passed = mean_acc >= train_cfg["accuracy_min"] and mean_rec >= train_cfg["recall_min"] and mean_kappa >= train_cfg["kappa_min"]
     print(f"Accuracy {mean_acc:.3f} (need >= {train_cfg['accuracy_min']}), "
           f"Recall {mean_rec:.3f} (need >= {train_cfg['recall_min']}), "
           f"Kappa {mean_kappa:.3f} (need >= {train_cfg['kappa_min']}) "
-          f"-> {'PASS' if passed else 'FAIL'} (meaningless until real data replaces mock)")
+          f"-> {'PASS' if passed else 'FAIL'}"
+          + (" (meaningless until real data replaces mock)" if is_mock else ""))
 
 
 if __name__ == "__main__":
