@@ -55,15 +55,6 @@
       <p class="stepprompt" id="step-prompt"></p>
 
       <div class="field">
-        <label class="field-label" for="sample-code">รหัสตัวอย่าง <span class="req">*</span></label>
-        <input type="text" id="sample-code" maxlength="32" placeholder="เช่น S001" autocomplete="off" disabled>
-        <p class="field-hint">
-          ต้องกรอกให้ตรงกับรหัสบนจานเพาะเชื้อ CompactDry — ถ้ารหัสไม่ตรง
-          จะจับคู่ผลแล็บกับภาพไม่ได้ และใช้เป็นข้อมูลฝึกไม่ได้เลย
-        </p>
-      </div>
-
-      <div class="field">
         <label class="field-label" for="images">ไฟล์ภาพ (เลือกทีละภาพตามขั้นตอนด้านบน)</label>
         <input type="file" id="images" accept="image/*,.dng" disabled>
         <p class="field-hint">
@@ -158,7 +149,6 @@
   <div class="container">
     <p id="footer-disclaimer">หมายเหตุ: เป็นระบบคัดกรองเบื้องต้น ไม่ใช่การยืนยันทางห้องปฏิบัติการ</p>
     <p class="sitefooter-meta">OnionGuard · จำแนกด้วย Random Forest จากภาพถ่ายใต้แสง UV 365 นาโนเมตร คู่กับภาพแสงปกติ (ถ้ามี) ต่อหอมแดง 1 หัว</p>
-    <p class="sitefooter-meta"><a id="admin-link" href="#">ผู้ดูแลระบบ</a></p>
   </div>
 </footer>
 
@@ -171,7 +161,6 @@
   const stageResult = document.getElementById('stage-result');
 
   const input = document.getElementById('images');
-  const sampleCode = document.getElementById('sample-code');
   const uploadBtn = document.getElementById('upload-btn');
   const skipBtn = document.getElementById('skip-btn');
   const proceedBtn = document.getElementById('proceed-btn');
@@ -228,10 +217,9 @@
   }
 
   function refreshUploadBtn() {
-    uploadBtn.disabled = busy || !(input.files && input.files.length) || !sampleCode.value.trim();
+    uploadBtn.disabled = busy || !(input.files && input.files.length);
   }
   input.addEventListener('change', refreshUploadBtn);
-  sampleCode.addEventListener('input', refreshUploadBtn);
 
   function renderUploadShots() {
     uploadShotsGrid.innerHTML = '';
@@ -278,8 +266,6 @@
   uploadBtn.addEventListener('click', function () {
     if (busy) return;
     const files = Array.from(input.files || []);
-    const code = sampleCode.value.trim();
-    if (!code) { showError('กรุณากรอกรหัสตัวอย่างก่อน'); sampleCode.focus(); return; }
     if (!files.length) { showError('ยังไม่ได้เลือกไฟล์'); return; }
 
     clearError();
@@ -287,10 +273,9 @@
 
     const fd = new FormData();
     files.forEach(function (f) { fd.append('images', f); });
-    fd.append('sample_code', code);
     if (sessionId) fd.append('session_id', sessionId);
 
-    apiFetch('/capture', { method: 'POST', body: fd }, statusText)
+    apiFetch('/public/capture', { method: 'POST', body: fd }, statusText)
       .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, data: d }; }); })
       .then(function (res) {
         if (!res.ok) { showError(res.data.error || 'อัปโหลดไม่สำเร็จ'); setBusy(false, statusText, ''); return; }
@@ -326,7 +311,7 @@
     clearError();
     setBusy(true, statusText, 'กำลังข้ามขั้นตอน...');
 
-    apiFetch('/capture/skip', {
+    apiFetch('/public/capture/skip', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ session_id: sessionId })
@@ -362,7 +347,7 @@
     clearError();
     setBusy(true, reviewStatus, 'กำลังประมวลผล...');
 
-    apiFetch('/predict-session', {
+    apiFetch('/public/predict-session', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ session_id: sessionId })
@@ -407,7 +392,9 @@
     toggleBtn.disabled = !d.clean_image;
 
     const sEl = document.getElementById('result-sample');
-    let stxt = d.sample_code ? ('รหัสตัวอย่าง ' + d.sample_code) : '';
+    // Server-generated code — shown so a result can be found again in the
+    // history page, not typed in by the user.
+    let stxt = d.sample_code ? ('รหัสอ้างอิง ' + d.sample_code) : '';
     if (d.saved_to_db && !d.saved_to_db.ok) {
       stxt += ' — ⚠ บันทึกลงฐานข้อมูลไม่สำเร็จ: ' + (d.saved_to_db.reason || '');
     } else if (d.saved_to_db && d.saved_to_db.ok) {
@@ -490,7 +477,6 @@
     uploadShotsGrid.innerHTML = '';
     uploadShotsWrap.classList.add('hidden');
     input.value = '';
-    sampleCode.value = '';
     uploadBtn.disabled = true;
     uploadBtn.textContent = FIRST_STEP.button;
     stepCount.textContent = 'ขั้นตอนที่ ' + FIRST_STEP.step_number + ' จาก ' + FIRST_STEP.total_steps;
@@ -511,7 +497,6 @@
         TOTAL = d.total_steps;
         FIRST_STEP = d.steps[0];
         uploadHeading.textContent = 'เลือกภาพ ' + TOTAL + ' ภาพ ตามลำดับ';
-        sampleCode.disabled = false;
         input.disabled = false;
         resetAll();
         setBusy(false, statusText, '');

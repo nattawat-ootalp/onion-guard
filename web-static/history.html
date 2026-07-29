@@ -42,23 +42,23 @@
   <div class="panel">
     <div class="filterbar">
       <div class="field field-search">
-        <label class="field-label" for="search">ค้นหารหัสตัวอย่าง</label>
-        <input type="search" id="search" placeholder="เช่น S001">
+        <label class="field-label" for="search">ค้นหารหัสอ้างอิง</label>
+        <input type="search" id="search" placeholder="เช่น P260729-a1b2c3">
       </div>
       <div class="field field-select">
-        <label class="field-label" for="filter-truth">ผลตรวจอ้างอิง</label>
-        <select id="filter-truth">
+        <label class="field-label" for="filter-label">ผลคัดกรอง</label>
+        <select id="filter-label">
           <option value="all">ทั้งหมด</option>
           <option value="1">พบความผิดปกติที่สัมพันธ์กับเชื้อรา</option>
           <option value="0">ไม่พบความผิดปกติ</option>
         </select>
       </div>
       <div class="field field-select">
-        <label class="field-label" for="filter-agree">ความสอดคล้อง</label>
-        <select id="filter-agree">
+        <label class="field-label" for="filter-flag">ความน่าเชื่อถือ</label>
+        <select id="filter-flag">
           <option value="all">ทั้งหมด</option>
-          <option value="yes">ตรงกัน</option>
-          <option value="no">ไม่ตรงกัน</option>
+          <option value="ok">ไม่มีข้อสังเกต</option>
+          <option value="flagged">มีข้อสังเกต</option>
         </select>
       </div>
     </div>
@@ -67,14 +67,14 @@
     <div id="load-error" class="errorbox hidden"></div>
 
     <div class="table-scroll">
-      <table class="data" id="samples-table">
+      <table class="data" id="scans-table">
         <thead>
-          <tr id="table-head">
-            <th>รหัส</th>
-            <th>ผลตรวจอ้างอิง</th>
-            <th>ผลทำนาย</th>
-            <th class="num">ความน่าจะเป็น</th>
-            <th>ความสอดคล้อง</th>
+          <tr>
+            <th>รหัสอ้างอิง</th>
+            <th>เวลา</th>
+            <th>ผลคัดกรอง</th>
+            <th class="num">ความมั่นใจ</th>
+            <th>ข้อสังเกต</th>
           </tr>
         </thead>
         <tbody></tbody>
@@ -82,7 +82,8 @@
     </div>
 
     <p class="muted" style="margin-top:14px; font-size:0.85rem;">
-      “ผลทำนาย” คือผลจากการตรวจสอบไขว้ (cross-validation) ของเฟส 3 ซึ่งแต่ละหัวถูกทำนายโดยโมเดลที่ไม่เคยเห็นหัวนั้นในการฝึก
+      รายการนี้คือผลการคัดกรองจากเว็บนี้เท่านั้น ไม่มีผลตรวจทางห้องปฏิบัติการกำกับ
+      จึงบอกได้เพียงว่าระบบตัดสินอย่างไร ไม่ได้บอกว่าระบบตัดสินถูกหรือผิด
     </p>
   </div>
 </main>
@@ -90,8 +91,7 @@
 <footer class="sitefooter">
   <div class="container">
     <p id="footer-disclaimer">หมายเหตุ: เป็นระบบคัดกรองเบื้องต้น ไม่ใช่การยืนยันทางห้องปฏิบัติการ</p>
-    <p class="sitefooter-meta">OnionGuard · จำแนกด้วย Random Forest จากภาพถ่ายใต้แสง UV 365 นาโนเมตร คู่กับภาพแสงปกติ (ถ้ามี) ต่อหอมแดง 1 หัว</p>
-    <p class="sitefooter-meta"><a id="admin-link" href="#">ผู้ดูแลระบบ</a></p>
+    <p class="sitefooter-meta">OnionGuard · คัดกรองจากภาพถ่ายใต้แสง UV 365 นาโนเมตร คู่กับภาพแสงปกติ (ถ้ามี) ต่อหอมแดง 1 หัว</p>
   </div>
 </footer>
 
@@ -100,17 +100,18 @@
 <script>
 (function () {
   const search = document.getElementById('search');
-  const filterTruth = document.getElementById('filter-truth');
-  const filterAgree = document.getElementById('filter-agree');
+  const filterLabel = document.getElementById('filter-label');
+  const filterFlag = document.getElementById('filter-flag');
   const countEl = document.getElementById('result-count');
   const loadError = document.getElementById('load-error');
   const pageSub = document.getElementById('page-sub');
-  const tableHead = document.getElementById('table-head');
-  const tbody = document.querySelector('#samples-table tbody');
+  const tbody = document.querySelector('#scans-table tbody');
 
+  // Wording is fixed by the report and must not be paraphrased or shortened:
+  // the system screens for an anomaly correlated with fungus, it does not
+  // identify fungus.
   const LABEL = { 1: 'พบความผิดปกติที่สัมพันธ์กับเชื้อรา', 0: 'ไม่พบความผิดปกติ' };
-  let samples = [];
-  let featureColumns = [];
+  let rows = [];
 
   function pill(kind, text) {
     const span = document.createElement('span');
@@ -119,48 +120,60 @@
     return span;
   }
 
+  function formatTime(iso) {
+    if (!iso) return '—';
+    const d = new Date(iso);
+    if (isNaN(d)) return iso;
+    return d.toLocaleString('th-TH', {
+      year: 'numeric', month: 'short', day: 'numeric',
+      hour: '2-digit', minute: '2-digit'
+    });
+  }
+
+  // Reasons a result deserves less trust. Shown per row so a confident-looking
+  // percentage is never read on its own.
+  function flagsFor(r) {
+    const out = [];
+    if (r.ood_status === 'out_of_range') out.push('ภาพอยู่นอกช่วงข้อมูลที่ใช้ฝึก');
+    if (r.borderline) out.push('ค่าก้ำกึ่ง');
+    if (r.framing_ok === false) out.push('หาตำแหน่งหัวหอมไม่สำเร็จ');
+    return out;
+  }
+
   function buildRows() {
     tbody.innerHTML = '';
-    samples.forEach(function (s) {
+    rows.forEach(function (r) {
+      const flags = flagsFor(r);
       const tr = document.createElement('tr');
-      tr.dataset.code = s.sample_code;
-      tr.dataset.truth = s.compactdry === null || s.compactdry === undefined ? 'na' : String(s.compactdry);
-      tr.dataset.agree = s.correct === null || s.correct === undefined ? 'na' : (s.correct ? 'yes' : 'no');
+      tr.dataset.code = (r.scan_code || '').toLowerCase();
+      tr.dataset.label = (r.pred_label === null || r.pred_label === undefined) ? 'na' : String(r.pred_label);
+      tr.dataset.flag = flags.length ? 'flagged' : 'ok';
 
       const code = document.createElement('td');
-      code.className = 'code'; code.textContent = s.sample_code;
+      code.className = 'code';
+      code.textContent = r.scan_code || '—';
       tr.appendChild(code);
 
-      const truthTd = document.createElement('td');
-      if (s.compactdry === 1) truthTd.appendChild(pill('pill-found', LABEL[1]));
-      else if (s.compactdry === 0) truthTd.appendChild(pill('pill-clear', LABEL[0]));
-      else truthTd.appendChild(pill('pill-neutral', 'ยังไม่มีผล'));
-      tr.appendChild(truthTd);
+      const when = document.createElement('td');
+      when.textContent = formatTime(r.captured_at);
+      tr.appendChild(when);
 
-      const predTd = document.createElement('td');
-      if (s.pred_label === 1) predTd.appendChild(pill('pill-found', LABEL[1]));
-      else if (s.pred_label === 0) predTd.appendChild(pill('pill-clear', LABEL[0]));
-      else predTd.innerHTML = '<span class="pill pill-neutral">—</span>';
-      tr.appendChild(predTd);
+      const labelTd = document.createElement('td');
+      if (r.pred_label === 1) labelTd.appendChild(pill('pill-found', LABEL[1]));
+      else if (r.pred_label === 0) labelTd.appendChild(pill('pill-clear', LABEL[0]));
+      else labelTd.appendChild(pill('pill-neutral', '—'));
+      tr.appendChild(labelTd);
 
-      const probaTd = document.createElement('td');
-      probaTd.className = 'num';
-      probaTd.textContent = (s.pred_proba === null || s.pred_proba === undefined) ? '—' : s.pred_proba.toFixed(3);
-      tr.appendChild(probaTd);
+      const confTd = document.createElement('td');
+      confTd.className = 'num';
+      confTd.textContent = (r.pred_conf === null || r.pred_conf === undefined)
+        ? '—' : (r.pred_conf * 100).toFixed(1) + '%';
+      tr.appendChild(confTd);
 
-      const agreeTd = document.createElement('td');
-      if (s.correct === null || s.correct === undefined) agreeTd.innerHTML = '<span class="muted">—</span>';
-      else if (s.correct) agreeTd.innerHTML = '<span class="mark-ok">ตรงกัน</span>';
-      else agreeTd.innerHTML = '<span class="mark-bad">ไม่ตรงกัน</span>';
-      tr.appendChild(agreeTd);
-
-      featureColumns.forEach(function (col) {
-        const td = document.createElement('td');
-        td.className = 'num';
-        const v = (s.features || {})[col[0]];
-        td.textContent = (v === null || v === undefined) ? '—' : Number(v).toFixed(col[2]);
-        tr.appendChild(td);
-      });
+      const flagTd = document.createElement('td');
+      if (!flags.length) flagTd.appendChild(pill('pill-clear', 'ไม่มีข้อสังเกต'));
+      else flagTd.appendChild(pill('pill-neutral', flags.join(' · ')));
+      tr.appendChild(flagTd);
 
       tbody.appendChild(tr);
     });
@@ -169,26 +182,28 @@
 
   function apply() {
     const q = search.value.trim().toLowerCase();
-    const truth = filterTruth.value;
-    const agree = filterAgree.value;
+    const wantLabel = filterLabel.value;
+    const wantFlag = filterFlag.value;
     let shown = 0;
-    Array.from(tbody.querySelectorAll('tr')).forEach(function (row) {
-      const matchQ = !q || row.dataset.code.toLowerCase().includes(q);
-      const matchT = truth === 'all' || row.dataset.truth === truth;
-      const matchA = agree === 'all' || row.dataset.agree === agree;
-      const visible = matchQ && matchT && matchA;
-      row.style.display = visible ? '' : 'none';
+
+    Array.from(tbody.rows).forEach(function (tr) {
+      const okSearch = !q || tr.dataset.code.indexOf(q) !== -1;
+      const okLabel = wantLabel === 'all' || tr.dataset.label === wantLabel;
+      const okFlag = wantFlag === 'all' || tr.dataset.flag === wantFlag;
+      const visible = okSearch && okLabel && okFlag;
+      tr.style.display = visible ? '' : 'none';
       if (visible) shown++;
     });
-    countEl.textContent = 'แสดง ' + shown + ' จาก ' + samples.length + ' ตัวอย่าง';
+
+    countEl.textContent = 'แสดง ' + shown + ' จาก ' + rows.length + ' รายการ';
   }
 
-  [search, filterTruth, filterAgree].forEach(function (el) {
+  [search, filterLabel, filterFlag].forEach(function (el) {
     el.addEventListener('input', apply);
     el.addEventListener('change', apply);
   });
 
-  apiFetch('/api/samples', {}, pageSub)
+  apiFetch('/api/public-scans', {}, pageSub)
     .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
     .then(function (res) {
       if (!res.ok) {
@@ -197,15 +212,13 @@
         pageSub.textContent = '';
         return;
       }
-      samples = res.d.samples || [];
-      featureColumns = res.d.feature_columns || [];
-      featureColumns.forEach(function (col) {
-        const th = document.createElement('th');
-        th.className = 'num';
-        th.textContent = col[1];
-        tableHead.appendChild(th);
-      });
-      pageSub.textContent = 'ตัวอย่างทั้งหมด ' + samples.length + ' หัว พร้อมผลตรวจอ้างอิง (CompactDry YM) และผลทำนายของโมเดล';
+      rows = res.d.rows || [];
+      if (!rows.length) {
+        pageSub.textContent = 'ยังไม่มีการสแกน';
+        countEl.textContent = '';
+        return;
+      }
+      pageSub.textContent = 'ผลการคัดกรองล่าสุด ' + rows.length + ' รายการ';
       buildRows();
     })
     .catch(function (e) {

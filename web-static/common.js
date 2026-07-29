@@ -19,8 +19,6 @@
       // page's real function (scanning / history), only the header text.
     });
 
-  var adminLink = document.getElementById("admin-link");
-  if (adminLink) adminLink.href = window.API_BASE + "/dataset";
 })();
 
 // Render's free tier suspends an idle service, so the FIRST request after a

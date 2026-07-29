@@ -78,6 +78,34 @@ RESULT_DISCLAIMER = (
     "หมายเหตุ: เป็นระบบคัดกรองเบื้องต้น ไม่ใช่การยืนยันทางห้องปฏิบัติการ"
 )
 
+# Two clients share this backend and must not share storage.
+#
+#   research  the staff pages served from here. Rows carry a CompactDry YM
+#             result and ARE the training set (src/export_features_from_db.py
+#             reads them), so a stray row is a corrupted dataset.
+#   public    the standalone AI site. No lab result exists for these scans and
+#             never will, so they are kept apart and never trained on.
+#
+# This separates DATA, not PERMISSIONS: both write through the same
+# service_role key, and nothing stops a determined caller from posting to the
+# research route. Add auth to the staff pages if that ever matters.
+DATASET_RESEARCH = "research"
+DATASET_PUBLIC = "public"
+DATASETS = {
+    DATASET_RESEARCH: {
+        "table": "scans",
+        "bucket": "scans",
+        "code_column": "sample_code",
+        "requires_sample_code": True,
+    },
+    DATASET_PUBLIC: {
+        "table": "public_scans",
+        "bucket": "public-scans",
+        "code_column": "scan_code",
+        "requires_sample_code": False,
+    },
+}
+
 _data_source = get_data_source()
 _lock = threading.Lock()
 _model = None
@@ -693,6 +721,35 @@ def api_scans():
         return jsonify({"error": str(exc)[:200], "rows": []}), 500
 
 
+@app.route("/api/public-scans")
+def api_public_scans():
+    """History for the standalone AI site.
+
+    Reads public_scans only. The staff endpoints (/api/samples, /api/scans)
+    expose the research set, including CompactDry results — that belongs to
+    the staff pages, not to a public scanner.
+    """
+    client = getattr(_data_source, "client", None)
+    if client is None:
+        return jsonify({"error": "ยังไม่ได้ต่อ Supabase", "rows": []}), 503
+    try:
+        limit = min(int(request.args.get("limit", 200)), 500)
+    except ValueError:
+        limit = 200
+    try:
+        rows = client.select(
+            DATASETS[DATASET_PUBLIC]["table"],
+            columns="id,scan_code,captured_at,pred_label,pred_conf,pred_proba,"
+                    "ood_status,borderline,framing_ok",
+            order="captured_at.desc",
+            limit=limit,
+        )
+        return jsonify({"rows": rows, "label_text": LABEL_TEXT,
+                        "disclaimer": RESULT_DISCLAIMER})
+    except Exception as exc:  # noqa: BLE001
+        return jsonify({"error": str(exc)[:200], "rows": []}), 500
+
+
 @app.route("/api/scan-image")
 def api_scan_image():
     """Mint a short-lived signed URL for a scan's stored photo and redirect
@@ -770,22 +827,41 @@ def capture_status():
 
 @app.route("/capture", methods=["POST"])
 def capture():
+    return _capture(DATASET_RESEARCH)
+
+
+@app.route("/public/capture", methods=["POST"])
+def public_capture():
+    return _capture(DATASET_PUBLIC)
+
+
+def _capture(dataset):
     """Accept uploaded photo(s) for the session.
 
     Files are assigned to consecutive steps from the session's current
     position, so the page can send all angles at once or one at a time.
     retake=true drops the previous upload and re-fills that slot.
+
+    dataset decides which table the finished scan lands in, and is fixed by
+    the route rather than read from the request — see DATASETS.
     """
     _prune_sessions()
     session_id = request.form.get("session_id") or None
     retake = request.form.get("retake") == "true"
     sample_code = (request.form.get("sample_code") or "").strip()
 
-    # Required, because a scan whose sample code is unknown can never be
-    # matched to its CompactDry culture result — which makes it useless as
-    # training data no matter how good the image is.
-    if not sample_code:
-        return jsonify({"error": "กรุณากรอกรหัสตัวอย่าง (เช่น S001) ก่อนอัปโหลด"}), 400
+    if DATASETS[dataset]["requires_sample_code"]:
+        # Required for research scans: one whose sample code is unknown can
+        # never be matched to its CompactDry culture result, which makes it
+        # useless as training data no matter how good the image is.
+        if not sample_code:
+            return jsonify({"error": "กรุณากรอกรหัสตัวอย่าง (เช่น S001) ก่อนอัปโหลด"}), 400
+    elif not sample_code:
+        # Public scans get a generated code instead. Asking a member of the
+        # public to invent one produced exactly the junk it sounds like
+        # ("hhh", "test"), and the code has no meaning without a lab result
+        # to match it to anyway.
+        sample_code = "P" + datetime.now().strftime("%y%m%d") + "-" + uuid.uuid4().hex[:6]
     if len(sample_code) > 32:
         return jsonify({"error": "รหัสตัวอย่างยาวเกินไป (สูงสุด 32 ตัวอักษร)"}), 400
 
@@ -808,10 +884,16 @@ def capture():
             "captured": [],
             "step_index": 0,
             "sample_code": sample_code,
+            "dataset": dataset,
         }
         retake = False
 
     session = _sessions[session_id]
+    # The dataset is set when the session is created and never changes after:
+    # continuing a research session through the public route (or the reverse)
+    # would silently move a scan into the wrong table.
+    if session.get("dataset") != dataset:
+        return jsonify({"error": "เซสชันนี้เริ่มจากอีกระบบหนึ่ง กรุณาเริ่มใหม่"}), 400
     session["sample_code"] = sample_code
 
     if retake:
@@ -891,6 +973,7 @@ def capture():
 
 
 @app.route("/capture/skip", methods=["POST"])
+@app.route("/public/capture/skip", methods=["POST"])
 def capture_skip():
     """Skip the current step — only allowed when it is marked required:false.
 
@@ -928,17 +1011,19 @@ def capture_skip():
 def _save_scan(session, result, checks):
     """Persist the scan to Supabase, image included.
 
+    Which table and bucket depends on session["dataset"] — see DATASETS for
+    why the two are kept apart.
+
     Never raises: a database or network problem must not lose the operator's
     result, which is already computed and on screen. The response carries
     saved_to_db so a silent failure is visible rather than assumed.
-
-    sample_code is left as the session id for now — the operator has no field
-    to type the real S0xx code yet, and inventing one would create records
-    that cannot be matched to a CompactDry result later.
     """
     client = getattr(_data_source, "client", None)
     if client is None:
         return {"ok": False, "reason": "ไม่ได้ต่อ Supabase (ใช้ไฟล์ในเครื่อง)"}
+
+    target = DATASETS[session.get("dataset", DATASET_RESEARCH)]
+    table, bucket, code_col = target["table"], target["bucket"], target["code_column"]
 
     try:
         uv = [c for c in session["captured"] if c["kind"] == "uv"]
@@ -947,11 +1032,10 @@ def _save_scan(session, result, checks):
             src = Path(uv[0]["path"])
             if src.exists():
                 image_path = f"{session['dir'].name}/{src.name}"
-                client.upload("scans", image_path, src.read_bytes(), content_type="image/png")
+                client.upload(bucket, image_path, src.read_bytes(), content_type="image/png")
 
-        row = client.insert("scans", {
-            "sample_code": session.get("sample_code") or session["dir"].name,
-            "image_original": session["dir"].name,
+        payload = {
+            code_col: session.get("sample_code") or session["dir"].name,
             "image_path": image_path,
             "pred_label": int(checks["label"]),
             "pred_conf": round(float(result["confidence"]), 4),
@@ -966,22 +1050,37 @@ def _save_scan(session, result, checks):
                 "background": checks["background"], "exif": checks["exif"],
                 "framing_failed_views": checks["framing_failed"],
             },
+        }
+        if table == "scans":
+            payload["image_original"] = session["dir"].name
             # left null on purpose: filled in after the CompactDry culture is
             # read. null means "not tested yet", never "no fungus".
-            "compactdry_truth": None,
-        })
-        return {"ok": True, "id": row.get("id"), "sample_code": row.get("sample_code")}
+            payload["compactdry_truth"] = None
+
+        row = client.insert(table, payload)
+        return {"ok": True, "id": row.get("id"), "sample_code": row.get(code_col)}
     except Exception as exc:  # noqa: BLE001
         return {"ok": False, "reason": str(exc)[:200]}
 
 
 @app.route("/predict-session", methods=["POST"])
 def predict_session():
+    return _predict_session(DATASET_RESEARCH)
+
+
+@app.route("/public/predict-session", methods=["POST"])
+def public_predict_session():
+    return _predict_session(DATASET_PUBLIC)
+
+
+def _predict_session(dataset):
     body = request.get_json(silent=True) or {}
     session_id = body.get("session_id")
     session = _sessions.get(session_id)
     if session is None:
         return jsonify({"error": "ไม่พบเซสชัน กรุณาเริ่มใหม่"}), 400
+    if session.get("dataset", DATASET_RESEARCH) != dataset:
+        return jsonify({"error": "เซสชันนี้เริ่มจากอีกระบบหนึ่ง กรุณาเริ่มใหม่"}), 400
 
     # Only UV frames go to the classifier. Dark frames (if the protocol adds
     # them) are kept but NOT used — dark-frame subtraction is not implemented.
