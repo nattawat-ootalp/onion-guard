@@ -85,17 +85,8 @@ create policy "service role manages scan images"
 
 -- ---------------------------------------------------------------- keep-alive
 
--- ปลุก Render ไม่ให้หลับ (free tier หลับหลังไม่มีคนใช้ ~15 นาที)
--- เปิด extension ก่อนที่ Dashboard > Database > Extensions: pg_cron, pg_net
+-- ปลุก Render ไม่ให้หลับ (free tier หลับหลังไม่มีคนใช้ ~15 นาที) ด้วย pg_cron
+-- + pg_net ให้ Supabase ยิง /health ทุก 5 นาที
 --
--- create extension if not exists pg_cron;
--- create extension if not exists pg_net;
---
--- select cron.schedule(
---   'keep-render-awake',
---   '*/10 * * * *',
---   $$ select net.http_get('https://<ชื่อ-service>.onrender.com/health') $$
--- );
---
--- ดูงานที่ตั้งไว้:  select * from cron.job;
--- ยกเลิก:          select cron.unschedule('keep-render-awake');
+-- ย้ายไปไว้เป็นไฟล์แยกพร้อมรัน: supabase/keepalive.sql (ใส่ URL จริงแล้ว)
+-- เปิด SQL Editor วางไฟล์นั้นแล้ว Run ครั้งเดียว
