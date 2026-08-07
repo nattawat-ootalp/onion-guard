@@ -6,6 +6,13 @@
     if (el) el.textContent = text;
   }
 
+  // Warm-up ping. Render's free tier sleeps after idle, so the FIRST hit
+  // pays a ~50s cold start. Firing /health the instant any page loads lets
+  // the host wake in the background while the user is still reading — by the
+  // time they press "scan", the server is usually already up. Cheap and
+  // best-effort; a failure here changes nothing (the real calls still run).
+  fetch(window.API_BASE + "/health").catch(function () {});
+
   fetch(window.API_BASE + "/api/site-info")
     .then(function (r) { return r.json(); })
     .then(function (d) {

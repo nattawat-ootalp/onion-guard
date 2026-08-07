@@ -806,6 +806,42 @@ def health():
     return jsonify({"status": "ok", "service": "onionguard"})
 
 
+def _start_keepalive():
+    """Keep the free-tier host awake so a demo never hits a ~50s cold start.
+
+    Render's free plan spins a service down after ~15 min with no INBOUND
+    traffic, and only inbound HTTP counts — so the app pings its own public
+    URL (Render injects RENDER_EXTERNAL_URL) every few minutes from a daemon
+    thread. Absent that env var (local runs, other hosts) this is a no-op,
+    so nothing changes off Render.
+
+    Failures are swallowed: this is best-effort warmth, never a hard
+    dependency, and it must not crash the worker if the network blips.
+    """
+    import os
+    import urllib.request
+
+    base = os.environ.get("RENDER_EXTERNAL_URL")
+    if not base:
+        return
+
+    url = base.rstrip("/") + "/health"
+    interval = int(os.environ.get("KEEPALIVE_INTERVAL_SECONDS", "600"))
+
+    def _loop():
+        while True:
+            time.sleep(interval)
+            try:
+                urllib.request.urlopen(url, timeout=30).read()
+            except Exception:  # noqa: BLE001 - best effort, never fatal
+                pass
+
+    threading.Thread(target=_loop, name="keepalive", daemon=True).start()
+
+
+_start_keepalive()
+
+
 @app.route("/reports/<path:filename>")
 def reports(filename):
     return send_from_directory(REPORTS_DIR, filename)
