@@ -49,7 +49,8 @@ sys.path.insert(0, str(ROOT / "src"))
 
 from advice import build_advice  # noqa: E402
 from data_source import get_data_source, TABLE_FEATURE_COLUMNS  # noqa: E402
-from onion_detect import detect_onion, detect_onion_visible, normalize_to_onion  # noqa: E402
+from onion_detect import (detect_garlic_uv, detect_garlic_visible, detect_onion,  # noqa: E402
+                           detect_onion_visible, normalize_to_onion)
 import predict as predict_mod  # noqa: E402
 
 try:
@@ -338,7 +339,51 @@ def _raw_embedded_preview(raw, rc):
     return cv2.cvtColor(arr, cv2.COLOR_BGR2RGB)
 
 
-def load_upload_to_bgr(file_storage, cfg, kind="uv"):
+def _detect_subject(bgr, cfg, crop, kind):
+    """Locate the subject with the detector its species needs.
+
+    Both crops share the sanity bounds and the target framing scale: those
+    describe the PHOTO and the geometry every downstream pixel threshold
+    assumes, not the plant. Only the segmentation rule differs, because what
+    makes a shallot stand out (red under UV, red skin in room light) is
+    absent on a garlic clove — see onion_detect.detect_garlic_uv.
+    """
+    od = cfg["onion_detect"]
+    sanity = od.get("sanity", {})
+    lo = sanity.get("min_radius_frac_of_frame")
+    hi = sanity.get("max_radius_frac_of_frame")
+
+    if crop == CROP_GARLIC:
+        gd = cfg.get("garlic_detect", {})
+        if kind == "visible":
+            return detect_garlic_visible(
+                bgr, window_frac=gd.get("visible_window_frac", 0.55),
+                min_area_frac=gd.get("visible_min_area_frac", 0.003),
+                min_radius_frac=lo, max_radius_frac=hi)
+        return detect_garlic_uv(
+            bgr, k=gd.get("detect_k", 4.0), min_area_frac=gd.get("min_area_frac", 0.005),
+            grow_factor=gd.get("uv_grow_factor", 0.6),
+            min_radius_frac=lo, max_radius_frac=hi)
+
+    if kind == "visible":
+        return detect_onion_visible(
+            bgr, k=od["visible_light_detect_k"], min_area_frac=od["min_area_frac"],
+            min_radius_frac=lo, max_radius_frac=hi,
+            min_abs_threshold=od.get("visible_light_min_abs_a", 6.0))
+    return detect_onion(
+        bgr, k=od["detect_k"], min_area_frac=od["min_area_frac"],
+        min_radius_frac=lo, max_radius_frac=hi)
+
+
+def _radius_frac_for(cfg, crop):
+    """Fraction of the output frame the subject should occupy after re-framing."""
+    if crop == CROP_GARLIC:
+        return cfg.get("garlic_detect", {}).get("onion_radius_frac",
+                                                cfg["onion_detect"]["onion_radius_frac"])
+    return cfg["onion_detect"]["onion_radius_frac"]
+
+
+def load_upload_to_bgr(file_storage, cfg, kind="uv", crop=DEFAULT_CROP):
     """Uploaded file -> (re-framed BGR array, exif dict, framing info, bg_level).
 
     Opened through Pillow so the EXIF orientation flag is applied; cv2 would
@@ -346,10 +391,9 @@ def load_upload_to_bgr(file_storage, cfg, kind="uv"):
     the frame re-cropped so it is centred at a fixed scale — see
     src/onion_detect.py for why that matters more than it sounds.
 
-    kind selects the detector: "uv" frames key off red/green against a
-    blue-only UV background, "visible" frames key off brightness against an
-    ordinary-lit background — see onion_detect.detect_onion_visible for why
-    they need different logic. No explicit alignment step is done between the
+    kind and crop together select the detector — see _detect_subject. A UV
+    frame and a room-light frame need different logic, and so do a shallot
+    and a garlic clove. No explicit alignment step is done between the
     two; both are independently centred/scaled around their own detected
     onion, which lines them up well enough in practice (verified against a
     real photo pair).
@@ -381,21 +425,7 @@ def load_upload_to_bgr(file_storage, cfg, kind="uv"):
         pil = ImageOps.exif_transpose(pil)  # honour the rotation flag
         bgr = cv2.cvtColor(np.array(pil.convert("RGB")), cv2.COLOR_RGB2BGR)
 
-    od = cfg["onion_detect"]
-    sanity = od.get("sanity", {})
-    if kind == "visible":
-        detection = detect_onion_visible(
-            bgr, k=od["visible_light_detect_k"], min_area_frac=od["min_area_frac"],
-            min_radius_frac=sanity.get("min_radius_frac_of_frame"),
-            max_radius_frac=sanity.get("max_radius_frac_of_frame"),
-            min_abs_threshold=od.get("visible_light_min_abs_a", 6.0),
-        )
-    else:
-        detection = detect_onion(
-            bgr, k=od["detect_k"], min_area_frac=od["min_area_frac"],
-            min_radius_frac=sanity.get("min_radius_frac_of_frame"),
-            max_radius_frac=sanity.get("max_radius_frac_of_frame"),
-        )
+    detection = _detect_subject(bgr, cfg, crop, kind)
     mask, _, _, info = detection
 
     gray = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY)
@@ -403,7 +433,7 @@ def load_upload_to_bgr(file_storage, cfg, kind="uv"):
     bg_level = float(np.median(bg_pixels)) if bg_pixels.size else None
 
     frame, info = normalize_to_onion(bgr, cfg["image"]["size_px"],
-                                      od["onion_radius_frac"], detection=detection)
+                                      _radius_frac_for(cfg, crop), detection=detection)
     info["source_size"] = [bgr.shape[1], bgr.shape[0]]
     return frame, exif, info, bg_level
 
@@ -1015,7 +1045,8 @@ def _capture(dataset):
 
         step = steps[session["step_index"]]
         try:
-            frame, exif, info, bg_level = load_upload_to_bgr(f, cfg, kind=step.get("kind", "uv"))
+            frame, exif, info, bg_level = load_upload_to_bgr(
+                f, cfg, kind=step.get("kind", "uv"), crop=crop)
         except ValueError as exc:
             return jsonify({"error": str(exc)}), 400
 

@@ -189,6 +189,130 @@ def detect_onion_visible(img_bgr, k=4.0, min_area_frac=0.005,
                                             min_radius_frac, max_radius_frac, info)
 
 
+def _otsu_threshold(values):
+    """Otsu's cut over a 1-D sample of pixel values, or None if too few."""
+    if values.size < 100:
+        return None
+    v = np.clip(values, 0, 255).astype(np.uint8)
+    t, _ = cv2.threshold(v, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    return float(t)
+
+
+def _grow_from_seed(seed, soft):
+    """Keep every component of `soft` that contains a `seed` pixel.
+
+    Hysteresis: the strict threshold finds the object's bright core, the
+    loose one recovers its dimmer rim without letting a separate dim object
+    in — it must be connected to a core pixel to survive.
+    """
+    n, labels = cv2.connectedComponents(soft.astype(np.uint8), 8)
+    keep = set(np.unique(labels[seed])) - {0}
+    if not keep:
+        return seed
+    return np.isin(labels, list(keep))
+
+
+def detect_garlic_uv(img_bgr, k=4.0, min_area_frac=0.005, grow_factor=0.6,
+                     min_radius_frac=None, max_radius_frac=None):
+    """Return (mask, (cx, cy), radius, info) for a UV-lit GARLIC frame.
+
+    detect_onion cannot be reused here. It assumes the subject announces
+    itself in red or green against a blue-only background, which is true of a
+    shallot's red skin; a garlic clove fluoresces cyan, with red essentially
+    absent (measured: clove R=2-15 against a background R=7). Only the green
+    condition ever fires, and the petri dish rim glows green too, so the
+    shallot rule welds clove and dish rim into one blob spanning the frame —
+    measured on all 61 real garlic photos it reported the object as 0.83-0.92
+    of the half-frame and flagged "touches edge" on 31 of them, then re-framed
+    every measurement around clove + dish.
+
+    Raising k does not fix it (still 0.76-0.87 at k=15) because the rim is
+    genuinely lit, not noise. What separates them is that the clove is far
+    brighter in green than the rim is — measured per photo, clove G is
+    2.5-3x rim G — but the absolute levels move with exposure (clove G=32 in
+    one batch, G=151 in another), so a fixed cut cannot serve both. Otsu
+    picks the cut from each photo's own histogram instead, restricted to
+    pixels already above the background, which is exactly the two-class
+    problem it solves. Across all 61 photos this isolates the clove with no
+    edge contact.
+    """
+    h, w = img_bgr.shape[:2]
+    g = img_bgr[:, :, 1].astype(np.float32)
+    bg_mean, bg_std = _background_stats(img_bgr)
+
+    thr_lit = bg_mean[1] + k * max(bg_std[1], 1.0)
+    lit = g > thr_lit
+    info = {"mode": "uv_garlic", "threshold_lit_g": float(thr_lit),
+            "bg_mean_bgr": [float(v) for v in bg_mean]}
+
+    t = _otsu_threshold(g[lit])
+    if t is None:
+        info.update({"ok": False, "reason": "ไม่พบพิกเซลที่เรืองแสงเหนือพื้นหลัง"})
+        return np.zeros((h, w), bool), (w / 2, h / 2), min(h, w) * 0.4, info
+
+    seed = lit & (g > t)
+    mask = _grow_from_seed(seed, lit & (g > t * grow_factor))
+    info["threshold_otsu_g"] = t
+    return _largest_component_to_detection(mask.astype(np.uint8), h, w, min_area_frac,
+                                            min_radius_frac, max_radius_frac, info)
+
+
+def detect_garlic_visible(img_bgr, window_frac=0.55, min_area_frac=0.003,
+                          min_radius_frac=None, max_radius_frac=None):
+    """Return (mask, (cx, cy), radius, info) for a garlic clove under room light.
+
+    detect_onion_visible keys off the a* (green->red) axis because a shallot
+    is red and the backdrop is not. Garlic skin is white to pale purple: on
+    the 61 real photos a* separates nothing (correlation of the resulting
+    radius with the UV detection's radius: 0.06, i.e. noise), and the
+    detector failed outright on every clove.
+
+    Brightness does separate the clove from the black dish it sits on
+    (measured L: clove 37-128, dish 6-14). What it does NOT separate is the
+    crumpled paper backdrop, which in these shots is often brighter than the
+    clove — plain Otsu on the whole frame returns the backdrop every time.
+    So the search is restricted to the centre window, where the protocol puts
+    the dish, and any component touching that window's border is dropped as
+    something that flowed in from outside it. Validation: the resulting
+    radius correlates 0.90 with the UV detection of the SAME head (median
+    difference 0.07 of the half-frame), which is the strongest check
+    available short of hand-labelling, since the two are independent
+    measurements of one clove.
+
+    window_frac is the side of that centre window as a fraction of the frame.
+    Widening it re-admits the backdrop (0.6 doubled the disagreements with
+    UV); narrowing it starts clipping large cloves.
+    """
+    h, w = img_bgr.shape[:2]
+    lum = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2GRAY).astype(np.float32)
+
+    y0, y1 = int(h * (0.5 - window_frac / 2)), int(h * (0.5 + window_frac / 2))
+    x0, x1 = int(w * (0.5 - window_frac / 2)), int(w * (0.5 + window_frac / 2))
+    win = np.zeros((h, w), bool)
+    win[y0:y1, x0:x1] = True
+
+    info = {"mode": "visible_garlic", "window": [x0, y0, x1 - x0, y1 - y0]}
+    floor = float(lum[win].min())
+    t = _otsu_threshold(lum[win] - floor)
+    if t is None:
+        info.update({"ok": False, "reason": "หน้าต่างค้นหาเล็กเกินไป"})
+        return np.zeros((h, w), bool), (w / 2, h / 2), min(h, w) * 0.4, info
+
+    mask = (win & ((lum - floor) > t)).astype(np.uint8)
+    n, labels, stats, _ = cv2.connectedComponentsWithStats(mask, 8)
+    on_border = set(np.unique(np.concatenate([
+        labels[y0, x0:x1], labels[y1 - 1, x0:x1],
+        labels[y0:y1, x0], labels[y0:y1, x1 - 1]]))) - {0}
+    inside = [i for i in range(1, n)
+              if i not in on_border and stats[i, cv2.CC_STAT_AREA] >= min_area_frac * h * w]
+    if inside:
+        mask = np.isin(labels, inside).astype(np.uint8)
+
+    info["threshold_otsu_lum"] = t + floor
+    return _largest_component_to_detection(mask, h, w, min_area_frac,
+                                            min_radius_frac, max_radius_frac, info)
+
+
 def normalize_to_onion(img_bgr, target_size, onion_radius_frac, detection=None):
     """Crop around the onion and resize so it is centred at a fixed scale.
 

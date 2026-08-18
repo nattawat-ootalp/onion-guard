@@ -40,7 +40,8 @@ from scipy import ndimage
 
 from common import ROOT, load_config, circular_roi_mask, srgb_to_linear
 from blob_features import detect_blobs, summarize_blobs
-from onion_detect import detect_onion, detect_onion_visible, normalize_to_onion
+from onion_detect import (detect_garlic_uv, detect_onion, detect_onion_visible,
+                          normalize_to_onion)
 import visible_features as vf_mod
 
 IMAGES_DIR = ROOT / "images"
@@ -74,7 +75,7 @@ FEATURE_NAMES = [
 EXTRA_HEAD_FEATURES = ["uv_exclusive_dot_frac"]
 
 
-def preprocess_image(img_bgr, cfg):
+def preprocess_image(img_bgr, cfg, crop="onion"):
     """Apply the SAME framing the serving path applies before measuring.
 
     web/app.py re-frames every uploaded photo with onion_detect so the onion
@@ -92,13 +93,25 @@ def preprocess_image(img_bgr, cfg):
 
     od = cfg["onion_detect"]
     sanity = od.get("sanity", {})
-    detection = detect_onion(
-        img_bgr, k=od["detect_k"], min_area_frac=od["min_area_frac"],
-        min_radius_frac=sanity.get("min_radius_frac_of_frame"),
-        max_radius_frac=sanity.get("max_radius_frac_of_frame"),
-    )
+    lo = sanity.get("min_radius_frac_of_frame")
+    hi = sanity.get("max_radius_frac_of_frame")
+    if crop == "garlic":
+        # A garlic clove needs its own segmentation rule; using the shallot
+        # detector here would frame training images differently from the way
+        # web/app.py frames the same photos at serving time, which is the one
+        # thing this function exists to prevent.
+        gd = cfg.get("garlic_detect", {})
+        detection = detect_garlic_uv(
+            img_bgr, k=gd.get("detect_k", 4.0), min_area_frac=gd.get("min_area_frac", 0.005),
+            grow_factor=gd.get("uv_grow_factor", 0.6), min_radius_frac=lo, max_radius_frac=hi)
+        radius_frac = gd.get("onion_radius_frac", od["onion_radius_frac"])
+    else:
+        detection = detect_onion(
+            img_bgr, k=od["detect_k"], min_area_frac=od["min_area_frac"],
+            min_radius_frac=lo, max_radius_frac=hi)
+        radius_frac = od["onion_radius_frac"]
     framed, _ = normalize_to_onion(img_bgr, cfg["image"]["size_px"],
-                                    od["onion_radius_frac"], detection=detection)
+                                    radius_frac, detection=detection)
     return framed
 
 
