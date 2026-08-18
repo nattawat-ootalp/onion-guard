@@ -40,6 +40,12 @@
       <input type="search" id="search" placeholder="เช่น S001">
     </div>
     <div class="field field-select">
+      <label class="field-label" for="crop-filter">ชนิดพืช</label>
+      <select id="crop-filter">
+        <option value="">ทุกชนิด</option>
+      </select>
+    </div>
+    <div class="field field-select">
       <label class="field-label" for="filter">แสดง</label>
       <select id="filter">
         <option value="pending">รอผลแล็บ</option>
@@ -57,6 +63,7 @@
       <thead>
         <tr>
           <th>รหัสตัวอย่าง</th>
+          <th>ชนิดพืช</th>
           <th>วันเวลาที่สแกน</th>
           <th>ระบบทำนาย</th>
           <th>รูปภาพ</th>
@@ -84,6 +91,10 @@
   const tbody = document.querySelector('#label-table tbody');
   const search = document.getElementById('search');
   const filter = document.getElementById('filter');
+  const cropFilter = document.getElementById('crop-filter');
+  // ชื่อพืชมาจากเซิร์ฟเวอร์ (/api/scans) ไม่ได้ hardcode ไว้ที่นี่
+  // จะได้ไม่ต้องแก้สองที่เวลาเพิ่มพืชชนิดใหม่
+  let CROPS = {};
   const countText = document.getElementById('count-text');
   const loadError = document.getElementById('load-error');
   let rows = [];
@@ -103,6 +114,7 @@
 
     rows.forEach(function (r) {
       const hasTruth = r.compactdry_truth === 0 || r.compactdry_truth === 1;
+      if (cropFilter.value && (r.crop || 'onion') !== cropFilter.value) return;
       if (mode === 'pending' && hasTruth) return;
       if (mode === 'done' && !hasTruth) return;
       if (q && !String(r.sample_code).toLowerCase().includes(q)) return;
@@ -113,6 +125,10 @@
       const code = document.createElement('td');
       code.className = 'code'; code.textContent = r.sample_code;
       tr.appendChild(code);
+
+      const cropCell = document.createElement('td');
+      cropCell.textContent = CROPS[r.crop] || r.crop || '—';
+      tr.appendChild(cropCell);
 
       const when = document.createElement('td');
       when.textContent = fmtDate(r.captured_at);
@@ -252,6 +268,13 @@
         return;
       }
       rows = res.d.rows || [];
+      CROPS = res.d.crops || {};
+      Object.keys(CROPS).forEach(function (id) {
+        const opt = document.createElement('option');
+        opt.value = id;
+        opt.textContent = CROPS[id];
+        cropFilter.appendChild(opt);
+      });
       render();
     })
     .catch(function (e) {
@@ -261,6 +284,7 @@
 
   search.addEventListener('input', render);
   filter.addEventListener('change', render);
+  cropFilter.addEventListener('change', render);
 })();
 </script>
 {% endblock %}

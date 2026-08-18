@@ -23,6 +23,24 @@
     <p class="stepprompt" id="step-prompt">{{ steps[0].prompt }}</p>
 
     <div class="field">
+      <span class="field-label">ชนิดพืช <span class="req">*</span></span>
+      <div class="cropchoice" id="crop-choice">
+        {% for c in crops %}
+        <label class="cropoption">
+          <input type="radio" name="crop" value="{{ c.id }}"
+                 data-code-example="{{ c.code_example }}"
+                 data-has-model="{{ 'true' if c.has_model else 'false' }}"
+                 data-note="{{ c.collect_only_note | default('', true) }}"
+                 {% if c.id == default_crop %}checked{% endif %}>
+          <span>{{ c.label }}</span>
+        </label>
+        {% endfor %}
+      </div>
+      <p class="field-hint">เลือกก่อนอัปโหลด — เปลี่ยนกลางคันไม่ได้ ต้องเริ่มเซสชันใหม่</p>
+      <div class="warnbox hidden" id="crop-note"></div>
+    </div>
+
+    <div class="field">
       <label class="field-label" for="sample-code">รหัสตัวอย่าง <span class="req">*</span></label>
       <input type="text" id="sample-code" maxlength="32" placeholder="เช่น S001" autocomplete="off">
       <p class="field-hint">
@@ -173,6 +191,33 @@
   let issueList = [];
   let currentRequired = FIRST_STEP.required !== false;
 
+  // ---- ชนิดพืช ----
+  // ล็อกทันทีที่อัปโหลดภาพแรก: เซิร์ฟเวอร์ปฏิเสธการเปลี่ยนพืชกลางเซสชันอยู่แล้ว
+  // (ภาพหัวเดียวกันจะถูกบันทึกผิดชนิด) หน้าเว็บจึงต้องไม่เปิดให้กดจนโดนปฏิเสธ
+  const cropRadios = Array.from(document.querySelectorAll('input[name="crop"]'));
+  const cropNote = document.getElementById('crop-note');
+
+  function currentCrop() {
+    const picked = cropRadios.find(function (r) { return r.checked; });
+    return picked || cropRadios[0];
+  }
+
+  function refreshCrop() {
+    const c = currentCrop();
+    if (!c) return;
+    sampleCode.placeholder = 'เช่น ' + c.dataset.codeExample;
+    const note = c.dataset.note || '';
+    cropNote.textContent = note;
+    cropNote.classList.toggle('hidden', !note);
+  }
+
+  function lockCrop(locked) {
+    cropRadios.forEach(function (r) { r.disabled = locked; });
+  }
+
+  cropRadios.forEach(function (r) { r.addEventListener('change', refreshCrop); });
+  refreshCrop();
+
   function showError(m) { errorText.textContent = m; errorPanel.classList.remove('hidden'); }
   function clearError() { errorPanel.classList.add('hidden'); }
 
@@ -258,6 +303,7 @@
     const fd = new FormData();
     files.forEach(function (f) { fd.append('images', f); });
     fd.append('sample_code', code);
+    fd.append('crop', currentCrop().value);
     if (sessionId) fd.append('session_id', sessionId);
 
     fetch('/capture', { method: 'POST', body: fd })
@@ -266,6 +312,7 @@
         if (!res.ok) { showError(res.data.error || 'อัปโหลดไม่สำเร็จ'); setBusy(false, statusText, ''); return; }
         const d = res.data;
         sessionId = d.session_id;
+        lockCrop(true);
 
         acceptedItems = acceptedItems.concat(d.accepted);
         d.accepted.forEach(function (item) {
@@ -398,6 +445,11 @@
 
   function renderResult(d) {
     const isFound = d.label === 1;
+    // A crop with no model returns measurements only. Everything the model
+    // would have filled in (label, confidence, advice, out-of-distribution)
+    // is hidden rather than shown empty — a blank confidence box next to a
+    // photo reads as "0% confident", which is not what happened.
+    const collectOnly = d.collect_only === true;
 
     images.overlay = d.overlay_image;
     images.clean = d.clean_image;
@@ -415,12 +467,20 @@
     sEl.textContent = stxt;
 
     const labelEl = document.getElementById('result-label');
-    labelEl.textContent = d.label_text;
-    labelEl.className = 'result-label ' + (isFound ? 'is-found' : 'is-clear');
+    const confBox = document.getElementById('result-confidence').closest('.figure-block');
+    if (collectOnly) {
+      labelEl.textContent = 'บันทึกภาพและค่าที่วัดได้แล้ว — ไม่มีการทำนายผล';
+      labelEl.className = 'result-label';
+      if (confBox) confBox.classList.add('hidden');
+    } else {
+      if (confBox) confBox.classList.remove('hidden');
+      labelEl.textContent = d.label_text;
+      labelEl.className = 'result-label ' + (isFound ? 'is-found' : 'is-clear');
 
-    const confEl = document.getElementById('result-confidence');
-    confEl.innerHTML = d.confidence_pct.toFixed(1) + '<span class="figure-unit">%</span>';
-    confEl.className = 'figure-value ' + (isFound ? 'is-found' : 'is-clear');
+      const confEl = document.getElementById('result-confidence');
+      confEl.innerHTML = d.confidence_pct.toFixed(1) + '<span class="figure-unit">%</span>';
+      confEl.className = 'figure-value ' + (isFound ? 'is-found' : 'is-clear');
+    }
 
     document.getElementById('result-time').innerHTML =
       d.processing_time.toFixed(2) + '<span class="figure-unit"> วินาที</span>';
@@ -458,6 +518,10 @@
     // ข้อจำกัดของผล
     const warn = document.getElementById('partial-warning');
     const notes = [];
+    if (collectOnly) {
+      notes.push(d.collect_only_note || ('ยังไม่มีโมเดล' + (d.crop_label || '') + ' ระบบเก็บข้อมูลอย่างเดียว'));
+      notes.push('เก็บค่าที่วัดได้ ' + d.n_features + ' ค่า ไว้ใช้เทรนโมเดลในอนาคต');
+    }
     if (d.ood_check && d.ood_check.status === 'out_of_range') notes.push(d.ood_check.message);
     if (d.borderline) {
       notes.push('ผลนี้ก้ำกึ่ง — โมเดลให้ความน่าจะเป็นฝั่ง “พบ” ที่ ' +
@@ -474,7 +538,7 @@
       warn.classList.remove('hidden');
     } else { warn.classList.add('hidden'); }
 
-    renderAdvice(d.advice);
+    renderAdvice(collectOnly ? null : d.advice);
     document.getElementById('result-disclaimer').textContent = d.disclaimer;
   }
 
@@ -491,6 +555,8 @@
     uploadShotsWrap.classList.add('hidden');
     input.value = '';
     sampleCode.value = '';
+    lockCrop(false);
+    refreshCrop();
     uploadBtn.disabled = true;
     uploadBtn.textContent = FIRST_STEP.button;
     stepCount.textContent = 'ขั้นตอนที่ ' + FIRST_STEP.step_number + ' จาก ' + FIRST_STEP.total_steps;

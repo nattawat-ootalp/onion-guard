@@ -92,13 +92,18 @@ def _error_body(exc):
         return str(exc)
 
 
-def ingest_sample(api, sample_code, uv_path, visible_path, timeout):
-    """Upload one head and run it, returning the server's predict payload."""
+def ingest_sample(api, sample_code, uv_path, visible_path, timeout, crop="onion"):
+    """Upload one head and run it, returning the server's predict payload.
+
+    crop travels with the upload because the server pins it to the session:
+    it decides which table column the row carries and, for a crop with no
+    model, whether anything is classified at all."""
     files = [("images", uv_path)]
     if visible_path is not None:
         files.append(("images", visible_path))
 
-    cap = _post_multipart(f"{api}/capture", {"sample_code": sample_code}, files, timeout)
+    cap = _post_multipart(f"{api}/capture",
+                          {"sample_code": sample_code, "crop": crop}, files, timeout)
     session_id = cap["session_id"]
 
     # No visible-light photo: the step is optional, so tell the server to skip
@@ -127,6 +132,9 @@ def main():
     ap.add_argument("--skip-existing", action="store_true",
                     help="ข้ามรหัสตัวอย่างที่มีในฐานข้อมูลแล้ว (กันข้อมูลซ้ำ)")
     ap.add_argument("--dry-run", action="store_true", help="แสดงว่าจะทำอะไรบ้าง ไม่ส่งจริง")
+    ap.add_argument("--crop", default="onion", choices=["onion", "garlic"],
+                    help="ชนิดพืชของทั้งโฟลเดอร์ (ค่าเริ่มต้น onion) — กระเทียมยังไม่มีโมเดล "
+                         "ระบบจะเก็บภาพและค่าที่วัดได้อย่างเดียว")
     args = ap.parse_args()
 
     root = Path(args.root)
@@ -175,7 +183,7 @@ def main():
             continue
         started = time.time()
         try:
-            res = ingest_sample(api, code, uv_path, vis_path, args.timeout)
+            res = ingest_sample(api, code, uv_path, vis_path, args.timeout, crop=args.crop)
         except urllib.error.HTTPError as exc:
             failed += 1
             print(f"[{i}/{len(jobs)}] {code}: ล้มเหลว — {_error_body(exc)}")
@@ -200,9 +208,15 @@ def main():
         if not db.get("ok"):
             flags.append(f"บันทึกลงฐานข้อมูลไม่สำเร็จ: {db.get('reason')}")
 
-        print(f"[{i}/{len(jobs)}] {code}: {res.get('label_text')} "
-              f"({res.get('confidence_pct')}% | p={res.get('proba_positive')} | "
-              f"จุดเล็ก {res.get('n_small_blobs')}) {time.time() - started:.1f}s"
+        if res.get("collect_only"):
+            summary = (f"เก็บข้อมูลอย่างเดียว (ไม่มีโมเดล{res.get('crop_label', '')}) "
+                       f"| ฟีเจอร์ {res.get('n_features')} ค่า "
+                       f"| จุดเล็ก {res.get('n_small_blobs')}")
+        else:
+            summary = (f"{res.get('label_text')} ({res.get('confidence_pct')}% "
+                       f"| p={res.get('proba_positive')} "
+                       f"| จุดเล็ก {res.get('n_small_blobs')})")
+        print(f"[{i}/{len(jobs)}] {code}: {summary} {time.time() - started:.1f}s"
               + ("  ⚠ " + " / ".join(flags) if flags else ""))
 
     print(f"\nสำเร็จ {ok} | ล้มเหลว {failed} | บันทึกลงฐานข้อมูล {saved_ok}")

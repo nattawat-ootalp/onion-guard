@@ -107,6 +107,38 @@ DATASETS = {
     },
 }
 
+# Which crops the staff site accepts, and whether a trained model exists for
+# each one.
+#
+# has_model=False is not a placeholder for "model coming soon" — it changes
+# what a scan DOES. Garlic photos are measured and stored so a model can be
+# trained from them later, but nothing is classified: the shipped model was
+# fitted on 60 shallots and has never seen a garlic clove, so any label it
+# produced would be a number with no evidence behind it, printed next to the
+# same confidence figure the onion path earns honestly.
+#
+# The public site is deliberately absent from this: it offers screening, and
+# there is nothing to screen garlic with yet.
+CROP_ONION = "onion"
+CROP_GARLIC = "garlic"
+DEFAULT_CROP = CROP_ONION
+CROPS = {
+    CROP_ONION: {
+        "label": "หอมแดง",
+        "code_example": "S001",
+        "subject_word": "หัวหอม",
+        "has_model": True,
+    },
+    CROP_GARLIC: {
+        "label": "กระเทียม",
+        "code_example": "GA001",
+        "subject_word": "กลีบกระเทียม",
+        "has_model": False,
+        "collect_only_note": "ยังไม่มีโมเดลกระเทียม ระบบจะเก็บภาพและค่าที่วัดได้ไว้เท่านั้น "
+                             "ไม่มีการทำนายผล",
+    },
+}
+
 _data_source = get_data_source()
 _lock = threading.Lock()
 _model = None
@@ -635,7 +667,9 @@ def scan():
     steps = capture_steps()
     return render_template("scan.html", active="scan",
                             steps=[_step_payload(i, steps) for i in range(len(steps))],
-                            total_steps=len(steps))
+                            total_steps=len(steps),
+                            crops=[dict(id=cid, **c) for cid, c in CROPS.items()],
+                            default_crop=DEFAULT_CROP)
 
 
 @app.route("/samples")
@@ -645,6 +679,7 @@ def samples():
         samples=_data_source.get_samples(),
         feature_columns=TABLE_FEATURE_COLUMNS,
         label_text=LABEL_TEXT,
+        crop_labels={cid: c["label"] for cid, c in CROPS.items()},
     )
 
 
@@ -694,7 +729,10 @@ def api_samples():
 
 @app.route("/api/dataset-stats")
 def api_dataset_stats():
-    return jsonify({"stats": _data_source.get_dataset_stats()})
+    crop = request.args.get("crop", DEFAULT_CROP)
+    if crop not in CROPS:
+        return jsonify({"error": f"ชนิดพืชไม่ถูกต้อง: {crop}"}), 400
+    return jsonify({"stats": _data_source.get_dataset_stats(crop), "crop": crop})
 
 
 @app.route("/api/model-metrics")
@@ -710,14 +748,21 @@ def api_scans():
     client = getattr(_data_source, "client", None)
     if client is None:
         return jsonify({"error": "ยังไม่ได้ต่อ Supabase", "rows": []}), 503
+    # ?crop=garlic narrows the list to one species. Without it every crop is
+    # listed, because the lab result is entered from this same page and a
+    # staff member reading cultures has both species in front of them.
+    crop = request.args.get("crop")
+    if crop is not None and crop not in CROPS:
+        return jsonify({"error": f"ชนิดพืชไม่ถูกต้อง: {crop}", "rows": []}), 400
     try:
         rows = client.select(
             "scans",
-            columns="id,sample_code,captured_at,pred_label,pred_conf,compactdry_truth,"
+            columns="id,sample_code,crop,captured_at,pred_label,pred_conf,compactdry_truth,"
                     "truth_recorded_at,ood_status,borderline,image_path",
             order="captured_at.desc",
+            filters={"crop": f"eq.{crop}"} if crop else None,
         )
-        return jsonify({"rows": rows})
+        return jsonify({"rows": rows, "crops": {cid: c["label"] for cid, c in CROPS.items()}})
     except Exception as exc:  # noqa: BLE001
         return jsonify({"error": str(exc)[:200], "rows": []}), 500
 
@@ -859,6 +904,8 @@ def capture_status():
         "allowed_extensions": u.get("allowed_extensions", []),
         "max_file_mb": u.get("max_file_mb", 25),
         "target_size": cfg["image"]["size_px"],
+        "default_crop": DEFAULT_CROP,
+        "crops": [dict(id=cid, **c) for cid, c in CROPS.items()],
     })
 
 
@@ -887,12 +934,21 @@ def _capture(dataset):
     retake = request.form.get("retake") == "true"
     sample_code = (request.form.get("sample_code") or "").strip()
 
+    # Public scans are onion-only: the public site screens, and no garlic
+    # model exists to screen with.
+    crop = (request.form.get("crop") or DEFAULT_CROP).strip()
+    if dataset == DATASET_PUBLIC:
+        crop = CROP_ONION
+    if crop not in CROPS:
+        return jsonify({"error": f"ชนิดพืชไม่ถูกต้อง: {crop}"}), 400
+
     if DATASETS[dataset]["requires_sample_code"]:
         # Required for research scans: one whose sample code is unknown can
         # never be matched to its CompactDry culture result, which makes it
         # useless as training data no matter how good the image is.
         if not sample_code:
-            return jsonify({"error": "กรุณากรอกรหัสตัวอย่าง (เช่น S001) ก่อนอัปโหลด"}), 400
+            return jsonify({"error": "กรุณากรอกรหัสตัวอย่าง (เช่น "
+                                     f"{CROPS[crop]['code_example']}) ก่อนอัปโหลด"}), 400
     elif not sample_code:
         # Public scans get a generated code instead. Asking a member of the
         # public to invent one produced exactly the junk it sounds like
@@ -922,6 +978,7 @@ def _capture(dataset):
             "step_index": 0,
             "sample_code": sample_code,
             "dataset": dataset,
+            "crop": crop,
         }
         retake = False
 
@@ -931,6 +988,11 @@ def _capture(dataset):
     # would silently move a scan into the wrong table.
     if session.get("dataset") != dataset:
         return jsonify({"error": "เซสชันนี้เริ่มจากอีกระบบหนึ่ง กรุณาเริ่มใหม่"}), 400
+    # Same reasoning for the crop: switching it half way through would file
+    # one head's photos under a species it is not, and that row is training
+    # data for whichever model reads it later.
+    if session.get("crop", DEFAULT_CROP) != crop:
+        return jsonify({"error": "เซสชันนี้เริ่มจากพืชอีกชนิดหนึ่ง กรุณาเริ่มใหม่"}), 400
     session["sample_code"] = sample_code
 
     if retake:
@@ -976,18 +1038,19 @@ def _capture(dataset):
         # Framing problems are reported per photo so a bad shot can be
         # replaced now rather than quietly degrading the result.
         warnings = []
+        subject = CROPS[crop].get("subject_word", "หัวหอม")
         if not info.get("ok"):
-            warnings.append(f"หาตำแหน่งหัวหอมไม่สำเร็จ ({info.get('reason', 'ไม่ทราบสาเหตุ')}) "
+            warnings.append(f"หาตำแหน่ง{subject}ไม่สำเร็จ ({info.get('reason', 'ไม่ทราบสาเหตุ')}) "
                             "— ใช้กรอบกลางภาพแทน ผลอาจคลาดเคลื่อน")
         if info.get("touches_edge"):
-            warnings.append("หัวหอมชนขอบภาพด้าน " + ", ".join(info["touches_edge"]) +
+            warnings.append(f"{subject}ชนขอบภาพด้าน " + ", ".join(info["touches_edge"]) +
                             " อาจถ่ายไม่ครบทั้งหัว")
         pad_warn = cfg["onion_detect"].get("warn_pad_area_frac", 0.25)
         if info.get("padded"):
             black = float((frame.max(axis=2) == 0).mean())
             if black > pad_warn:
-                warnings.append(f"หัวหอมอยู่ชิดขอบภาพ ต้องเติมพื้นที่ดำ {black*100:.0f}% "
-                                "— จัดให้หัวหอมอยู่กลางกรอบมากขึ้น")
+                warnings.append(f"{subject}อยู่ชิดขอบภาพ ต้องเติมพื้นที่ดำ {black*100:.0f}% "
+                                f"— จัดให้{subject}อยู่กลางกรอบมากขึ้น")
 
         accepted.append({
             "id": step["id"],
@@ -1074,20 +1137,29 @@ def _save_scan(session, result, checks):
         payload = {
             code_col: session.get("sample_code") or session["dir"].name,
             "image_path": image_path,
-            "pred_label": int(checks["label"]),
-            "pred_conf": round(float(result["confidence"]), 4),
-            "pred_proba": round(float(result["proba_positive"]), 4),
-            "decision_threshold": round(float(result["decision_threshold"]), 4),
             "features": result["features"],
-            "ood_status": checks["ood"].get("status"),
-            "borderline": bool(result["borderline"]),
             "framing_ok": not checks["framing_failed"],
             "quality_notes": {
-                "ood": checks["ood"], "scale": checks["scale"],
-                "background": checks["background"], "exif": checks["exif"],
+                "scale": checks["scale"], "background": checks["background"],
+                "exif": checks["exif"],
                 "framing_failed_views": checks["framing_failed"],
             },
         }
+        if table == "scans":
+            payload["crop"] = session.get("crop", DEFAULT_CROP)
+        # A crop with no model produces no prediction, so every model-derived
+        # column stays null. Writing 0 or "unknown" instead would make an
+        # unscored row indistinguishable from one the model called negative.
+        if checks.get("label") is not None:
+            payload.update({
+                "pred_label": int(checks["label"]),
+                "pred_conf": round(float(result["confidence"]), 4),
+                "pred_proba": round(float(result["proba_positive"]), 4),
+                "decision_threshold": round(float(result["decision_threshold"]), 4),
+                "ood_status": checks["ood"].get("status"),
+                "borderline": bool(result["borderline"]),
+            })
+            payload["quality_notes"]["ood"] = checks["ood"]
         if table == "scans":
             payload["image_original"] = session["dir"].name
             # left null on purpose: filled in after the CompactDry culture is
@@ -1098,6 +1170,68 @@ def _save_scan(session, result, checks):
         return {"ok": True, "id": row.get("id"), "sample_code": row.get(code_col)}
     except Exception as exc:  # noqa: BLE001
         return {"ok": False, "reason": str(exc)[:200]}
+
+
+def _collect_only_session(session, session_id, crop, paths, visible_path, cfg, uv):
+    """Finish a scan for a crop that has no model: measure and store, no label.
+
+    The image quality checks that still mean something are kept — framing,
+    scale and background all describe the PHOTO and hold whatever the
+    species. The out-of-distribution check is dropped on purpose: it compares
+    against feature ranges recorded from the shallot training set, so running
+    it on garlic would report "out of range" for every clove and say nothing
+    about the photo.
+    """
+    try:
+        with _lock:
+            measured = predict_mod.measure_head(paths, cfg=cfg, visible_image_path=visible_path)
+    except Exception as exc:  # noqa: BLE001
+        return jsonify({"error": f"วัดค่าจากภาพไม่สำเร็จ: {exc}"}), 500
+
+    overlay_uri = _png_data_uri(measured["overlay_image"])
+    clean_uri = None
+    src = Path(measured["overlay_source_path"])
+    if src.exists():
+        clean_img = cv2.imread(str(src))
+        if clean_img is not None:
+            clean_uri = _jpeg_data_uri(
+                clean_img, cfg["capture_sequence"]["preview"].get("jpeg_quality", 92))
+
+    exif_report = check_exif_consistency(uv, cfg)
+    bg_report = check_background_consistency(uv, cfg)
+    scale_report = check_scale_consistency(uv, cfg)
+    framing_failed = [c["step_id"] for c in uv
+                      if not (c.get("framing") or {}).get("ok", True)]
+
+    saved = _save_scan(session, measured, {
+        "label": None, "ood": None, "scale": scale_report,
+        "background": bg_report, "exif": exif_report,
+        "framing_failed": framing_failed,
+    })
+    _sessions.pop(session_id, None)
+
+    return jsonify({
+        "collect_only": True,
+        "crop": crop,
+        "crop_label": CROPS[crop]["label"],
+        "collect_only_note": CROPS[crop].get("collect_only_note", ""),
+        "saved_to_db": saved,
+        "sample_code": session.get("sample_code"),
+        "processing_time": round(measured["processing_time"], 2),
+        "overlay_image": overlay_uri,
+        "clean_image": clean_uri,
+        "overlay_source": src.name,
+        "n_small_blobs": measured["features"].get("n_small_sharp_blobs_viewmax", 0),
+        "n_large_blotches": measured["features"].get("n_large_blotches_viewmax", 0),
+        "n_features": len(measured["features"]),
+        "n_views_used": len(uv),
+        "exif_check": exif_report,
+        "background_check": bg_report,
+        "scale_check": scale_report,
+        "framing_failed_views": framing_failed,
+        "disclaimer": RESULT_DISCLAIMER,
+        "is_mock_data": _data_source.is_mock_data(),
+    })
 
 
 @app.route("/predict-session", methods=["POST"])
@@ -1140,6 +1274,10 @@ def _predict_session(dataset):
     visible_usable = (visible and visible[0].get("path")
                       and (visible[0].get("framing") or {}).get("ok", True))
     visible_path = visible[0]["path"] if visible_usable else None
+
+    crop = session.get("crop", DEFAULT_CROP)
+    if not CROPS[crop]["has_model"]:
+        return _collect_only_session(session, session_id, crop, paths, visible_path, cfg, uv)
 
     try:
         with _lock:

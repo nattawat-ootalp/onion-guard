@@ -38,6 +38,7 @@
       <thead>
         <tr>
           <th>รหัส</th>
+          <th>ชนิดพืช</th>
           <th>ผลตรวจอ้างอิง</th>
           <th>ผลทำนาย</th>
           <th class="num">ความน่าจะเป็น</th>
@@ -53,6 +54,7 @@
             data-truth="{{ s.compactdry if s.compactdry is not none else 'na' }}"
             data-agree="{% if s.correct is none %}na{% elif s.correct %}yes{% else %}no{% endif %}">
           <td class="code">{{ s.sample_code }}</td>
+          <td>{{ crop_labels.get(s.crop, s.crop) }}</td>
           <td>
             {% if s.compactdry == 1 %}<span class="pill pill-found">{{ label_text[1] }}</span>
             {% elif s.compactdry == 0 %}<span class="pill pill-clear">{{ label_text[0] }}</span>

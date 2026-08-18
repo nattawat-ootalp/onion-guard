@@ -24,3 +24,7 @@ capture_test.png
 .env.*
 *.key
 secrets.json
+
+# ภาพต้นฉบับกระเทียม (จัดคู่ UV/แสงปกติไว้ใน GA001..GA061) — ใหญ่และไม่ใช่โค้ด
+# นำเข้าระบบด้วย src/ingest_folder.py --crop garlic แล้วเก็บจริงใน Supabase Storage
+Garlic/

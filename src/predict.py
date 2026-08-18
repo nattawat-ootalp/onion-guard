@@ -259,32 +259,25 @@ def compute_visible_cross_check(visible_image_path, small_blobs, cfg):
     return vf_mod.uv_exclusive_dot_fraction(small_blobs, mask, cfg)
 
 
-def predict_head(image_paths, model=None, cfg=None, model_cfg=None, visible_image_path=None):
-    """image_paths: UV angle file path(s) for one head, already normalized
-    (centred, fixed scale) by the caller — see onion_detect.normalize_to_onion.
-    visible_image_path: optional companion ordinary-light photo of the SAME
-    head, ALSO already normalized the same way (onion_detect.detect_onion_visible
-    + normalize_to_onion) — this file does no onion detection itself, by
-    design (see module docstring: framing happens upstream, this file only
-    measures an already-framed image).
-    Returns {label, confidence, processing_time, overlay_image, overlay_source_path}.
-    overlay_image is a BGR numpy array — write it with cv2.imwrite() yourself."""
+def measure_head(image_paths, cfg=None, visible_image_path=None, feature_names=None):
+    """Measure one head's photos WITHOUT classifying them.
+
+    Split out of predict_head so a crop that has no trained model yet
+    (garlic, at the time of writing) can still be photographed, measured and
+    stored. Those rows are what a future model would be trained on, so the
+    measurement has to be the same code the onion path uses — a second,
+    parallel extraction would drift and quietly produce features that do not
+    match the ones the model was fitted on.
+
+    feature_names: the deployed model's feature list, used only to decide
+    which per-view names to aggregate. Pass None when there is no model and
+    every measured feature is aggregated instead.
+
+    Returns {features, overlay_image, overlay_source_path, processing_time}.
+    overlay_image is a BGR numpy array — write it with cv2.imwrite() yourself.
+    """
     start = time.time()
     cfg = cfg or load_config()
-    model_cfg = model_cfg or load_model_config()
-    if model is None:
-        model = joblib.load(MODEL_PATH)
-
-    feature_names = model_cfg["feature_names"]
-    # The saved model dictates the naming: a single-view model uses plain
-    # feature names, a multi-view one uses _viewmean/_viewmax pairs. Both are
-    # built below and the model's own list selects what it needs, so predict
-    # stays correct whichever the model was trained as. Cross-modal features
-    # (EXTRA_HEAD_FEATURE_NAMES) are excluded here: they don't exist in
-    # per-view feats at all, so the generic mean/max loop below would KeyError.
-    base_names = sorted({
-        f.replace("_viewmean", "").replace("_viewmax", "") for f in feature_names
-    } - set(EXTRA_HEAD_FEATURE_NAMES))
 
     per_view_feats, per_view_blobs, imgs_bgr = [], [], []
     for p in image_paths:
@@ -296,6 +289,19 @@ def predict_head(image_paths, model=None, cfg=None, model_cfg=None, visible_imag
         feats, small_blobs, large_blobs, _ = compute_view_features(img_rgb, cfg)
         per_view_feats.append(feats)
         per_view_blobs.append((small_blobs, large_blobs))
+
+    # The saved model dictates the naming: a single-view model uses plain
+    # feature names, a multi-view one uses _viewmean/_viewmax pairs. Both are
+    # built below and the model's own list selects what it needs, so predict
+    # stays correct whichever the model was trained as. Cross-modal features
+    # (EXTRA_HEAD_FEATURE_NAMES) are excluded here: they don't exist in
+    # per-view feats at all, so the generic mean/max loop below would KeyError.
+    if feature_names is None:
+        base_names = sorted(set(per_view_feats[0]) - set(EXTRA_HEAD_FEATURE_NAMES))
+    else:
+        base_names = sorted({
+            f.replace("_viewmean", "").replace("_viewmax", "") for f in feature_names
+        } - set(EXTRA_HEAD_FEATURE_NAMES))
 
     agg = {}
     for b in base_names:
@@ -315,6 +321,40 @@ def predict_head(image_paths, model=None, cfg=None, model_cfg=None, visible_imag
     agg["uv_exclusive_dot_frac"] = compute_visible_cross_check(
         visible_image_path, last_small_blobs, cfg)
 
+    # Overlay the view with the most detected anomalies (most informative angle).
+    view_scores = [len(sb) + len(lb) for sb, lb in per_view_blobs]
+    overlay_idx = int(np.argmax(view_scores)) if any(view_scores) else 0
+    small_blobs, large_blobs = per_view_blobs[overlay_idx]
+    overlay_image = draw_overlay(imgs_bgr[overlay_idx], small_blobs, large_blobs)
+
+    return {
+        "features": agg,
+        "overlay_image": overlay_image,
+        "overlay_source_path": str(image_paths[overlay_idx]),
+        "processing_time": time.time() - start,
+    }
+
+
+def predict_head(image_paths, model=None, cfg=None, model_cfg=None, visible_image_path=None):
+    """image_paths: UV angle file path(s) for one head, already normalized
+    (centred, fixed scale) by the caller — see onion_detect.normalize_to_onion.
+    visible_image_path: optional companion ordinary-light photo of the SAME
+    head, ALSO already normalized the same way (onion_detect.detect_onion_visible
+    + normalize_to_onion) — this file does no onion detection itself, by
+    design (see module docstring: framing happens upstream, this file only
+    measures an already-framed image).
+    Returns {label, confidence, processing_time, overlay_image, overlay_source_path}.
+    overlay_image is a BGR numpy array — write it with cv2.imwrite() yourself."""
+    cfg = cfg or load_config()
+    model_cfg = model_cfg or load_model_config()
+    if model is None:
+        model = joblib.load(MODEL_PATH)
+
+    feature_names = model_cfg["feature_names"]
+    measured = measure_head(image_paths, cfg=cfg, visible_image_path=visible_image_path,
+                            feature_names=feature_names)
+    agg = measured["features"]
+
     missing = [f for f in feature_names if f not in agg]
     if missing:
         raise ValueError(f"ฟีเจอร์ที่โมเดลต้องการไม่ครบ: {missing[:5]}")
@@ -323,12 +363,6 @@ def predict_head(image_paths, model=None, cfg=None, model_cfg=None, visible_imag
     threshold = model_cfg["decision_threshold"]
     label = int(proba_positive >= threshold)
     confidence = proba_positive if label == 1 else 1 - proba_positive
-
-    # Overlay the view with the most detected anomalies (most informative angle).
-    view_scores = [len(sb) + len(lb) for sb, lb in per_view_blobs]
-    overlay_idx = int(np.argmax(view_scores)) if any(view_scores) else 0
-    small_blobs, large_blobs = per_view_blobs[overlay_idx]
-    overlay_image = draw_overlay(imgs_bgr[overlay_idx], small_blobs, large_blobs)
 
     return {
         "label": label,
@@ -340,9 +374,9 @@ def predict_head(image_paths, model=None, cfg=None, model_cfg=None, visible_imag
         "proba_positive": proba_positive,
         "decision_threshold": threshold,
         "borderline": 0.5 <= proba_positive < threshold,
-        "processing_time": time.time() - start,
-        "overlay_image": overlay_image,
-        "overlay_source_path": str(image_paths[overlay_idx]),
+        "processing_time": measured["processing_time"],
+        "overlay_image": measured["overlay_image"],
+        "overlay_source_path": measured["overlay_source_path"],
         "features": agg,
     }
 

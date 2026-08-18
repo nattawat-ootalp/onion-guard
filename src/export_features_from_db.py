@@ -41,14 +41,19 @@ def main():
                     help="รหัสตัวอย่างที่ไม่เอา (เช่น ตัวที่หาหัวหอมไม่เจอ)")
     ap.add_argument("--require-framing-ok", action="store_true",
                     help="ตัดตัวอย่างที่ auto-framing ล้มเหลวออกทั้งหมด")
+    # หนึ่งไฟล์ features.csv = ชุดฝึกของโมเดลเดียว ถ้าปนสองพืชกัน โมเดลจะเรียน
+    # จากกลีบกระเทียมว่าเป็นหัวหอม โดยไม่มีอะไรเตือน จึงบังคับให้ระบุชนิดเสมอ
+    ap.add_argument("--crop", default="onion", choices=["onion", "garlic"],
+                    help="ดึงเฉพาะพืชชนิดนี้ (ค่าเริ่มต้น onion)")
     args = ap.parse_args()
 
     load_env()
     client = SupabaseClient()
     rows = client.select(
         "scans",
-        columns="sample_code,features,compactdry_truth,framing_ok",
+        columns="sample_code,crop,features,compactdry_truth,framing_ok",
         order="sample_code.asc",
+        filters={"crop": f"eq.{args.crop}"},
     )
 
     exclude = set(args.exclude)

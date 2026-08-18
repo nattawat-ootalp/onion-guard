@@ -13,6 +13,9 @@
 create table if not exists public.scans (
   id                bigint generated always as identity primary key,
   sample_code       text not null,
+  -- ชนิดพืช: โมเดลคนละตัวต่อพืช ห้ามเทรนรวมกันโดยไม่ตั้งใจ
+  -- (ของเดิมมีแต่หอมแดง จึง default 'onion' ให้แถวเก่าถูกต้องอัตโนมัติ)
+  crop              text not null default 'onion' check (crop in ('onion', 'garlic')),
   captured_at       timestamptz not null default now(),
 
   -- ภาพ

@@ -58,8 +58,8 @@ class DataSource(ABC):
         the TABLE_FEATURE_COLUMNS values."""
 
     @abstractmethod
-    def get_dataset_stats(self):
-        """Class counts / balance for /dataset."""
+    def get_dataset_stats(self, crop="onion"):
+        """Class counts / balance for /dataset, for one crop's training set."""
 
     @abstractmethod
     def get_model_metrics(self):
@@ -94,6 +94,8 @@ class LocalFileDataSource(DataSource):
             truth_raw = row.get("compactdry", "")
             entry = {
                 "sample_code": code,
+                # The local CSV set predates the garlic work and holds shallots only.
+                "crop": "onion",
                 "compactdry": int(truth_raw) if truth_raw not in ("", None) else None,
                 "pred_label": int(pred["y_pred"]) if pred else None,
                 "pred_proba": _to_float(pred["y_proba"]) if pred else None,
@@ -123,8 +125,12 @@ class LocalFileDataSource(DataSource):
         images_dir = ROOT / "images"
         return len(list(images_dir.glob("*.png"))) if images_dir.exists() else 0
 
-    def get_dataset_stats(self):
-        samples = self.get_samples()
+    def get_dataset_stats(self, crop="onion"):
+        # Stats describe the training set of ONE model, so they are counted
+        # per crop. Without this, storing garlic scans would silently inflate
+        # the shallot dataset's sample count and shift its class balance —
+        # numbers the report quotes.
+        samples = [s for s in self.get_samples() if s.get("crop", "onion") == crop]
         total = len(samples)
         n_pos = sum(1 for s in samples if s["compactdry"] == 1)
         n_neg = sum(1 for s in samples if s["compactdry"] == 0)
@@ -239,7 +245,7 @@ class SupabaseDataSource(LocalFileDataSource):
     def get_samples(self):
         rows = self.client.select(
             "scans",
-            columns="sample_code,captured_at,pred_label,pred_conf,pred_proba,"
+            columns="sample_code,crop,captured_at,pred_label,pred_conf,pred_proba,"
                     "features,compactdry_truth,ood_status,borderline",
             order="captured_at.desc",
         )
@@ -249,6 +255,8 @@ class SupabaseDataSource(LocalFileDataSource):
             pred = r.get("pred_label")
             entry = {
                 "sample_code": r["sample_code"],
+                # Rows written before the crop column existed are shallots.
+                "crop": r.get("crop") or "onion",
                 "compactdry": int(truth) if truth is not None else None,
                 "pred_label": int(pred) if pred is not None else None,
                 "pred_proba": r.get("pred_proba"),
