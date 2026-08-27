@@ -29,8 +29,8 @@
         <label class="cropoption">
           <input type="radio" name="crop" value="{{ c.id }}"
                  data-code-example="{{ c.code_example }}"
-                 data-has-model="{{ 'true' if c.has_model else 'false' }}"
-                 data-note="{{ c.collect_only_note | default('', true) }}"
+                 data-screening="{{ c.screening }}"
+                 data-note="{{ c.note | default('', true) }}"
                  {% if c.id == default_crop %}checked{% endif %}>
           <span>{{ c.label }}</span>
         </label>
@@ -208,6 +208,9 @@
     sampleCode.placeholder = 'เช่น ' + c.dataset.codeExample;
     const note = c.dataset.note || '';
     cropNote.textContent = note;
+    // A crop that IS screened explains how; only a crop that cannot be
+    // screened yet is a warning.
+    cropNote.className = (c.dataset.screening === 'collect_only') ? 'warnbox' : 'notebox';
     cropNote.classList.toggle('hidden', !note);
   }
 
@@ -523,7 +526,23 @@
       notes.push('เก็บค่าที่วัดได้ ' + d.n_features + ' ค่า ไว้ใช้เทรนโมเดลในอนาคต');
     }
     if (d.ood_check && d.ood_check.status === 'out_of_range') notes.push(d.ood_check.message);
-    if (d.borderline) {
+    // การตรวจแบบเทียบกับ “ของปกติ” (กระเทียม) — ต้องบอกให้ชัดว่าเทียบกับอะไร
+    // เพราะระบบยังไม่เคยเห็นกลีบที่ยืนยันว่าพบเชื้อเลยแม้แต่กลีบเดียว
+    if (d.anomaly) {
+      notes.push('ผลนี้ได้จากการเทียบกับกลีบกระเทียมปกติ ' + d.anomaly.n_baseline_samples +
+        ' ตัวอย่าง — ระบบยังไม่เคยเห็นกลีบที่ผลแล็บยืนยันว่าพบเชื้อ จึงบอกได้ว่า “ต่างจากปกติ” ' +
+        'ไม่ใช่การระบุว่าเป็นเชื้อชนิดใด');
+      if (isFound && d.anomaly.top_features && d.anomaly.top_features.length) {
+        notes.push('ค่าที่ต่างจากปกติมากที่สุด: ' + d.anomaly.top_features.map(function (f) {
+          return f.label + ' (ห่างจากค่ากลาง ' + f.z.toFixed(1) + ' เท่าของช่วงปกติ)';
+        }).join(' · '));
+      }
+    }
+    if (d.borderline && d.anomaly) {
+      notes.push('ผลนี้ก้ำกึ่ง — ความต่างจากปกติอยู่ที่ ' + d.anomaly.score.toFixed(2) +
+        ' ขณะที่เกณฑ์คือ ' + d.anomaly.threshold.toFixed(2) +
+        ' ซึ่งเกือบเท่ากัน ควรถ่ายซ้ำหรือส่งเพาะเชื้อยืนยัน');
+    } else if (d.borderline) {
       notes.push('ผลนี้ก้ำกึ่ง — โมเดลให้ความน่าจะเป็นฝั่ง “พบ” ที่ ' +
         (d.proba_positive * 100).toFixed(1) + '% ซึ่งเอนไปทางพบ แต่ยังไม่ถึงเกณฑ์ ' +
         (d.decision_threshold * 100).toFixed(1) + '% จึงรายงานว่าไม่พบ ควรตรวจซ้ำหรือส่งเพาะเชื้อยืนยัน');

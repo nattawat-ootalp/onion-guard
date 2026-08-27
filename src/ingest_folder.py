@@ -212,6 +212,13 @@ def main():
             summary = (f"เก็บข้อมูลอย่างเดียว (ไม่มีโมเดล{res.get('crop_label', '')}) "
                        f"| ฟีเจอร์ {res.get('n_features')} ค่า "
                        f"| จุดเล็ก {res.get('n_small_blobs')}")
+        elif res.get("screening") == "anomaly":
+            # The one-class path reports a distance from normal, not a class
+            # probability — printing p= here would print None on every clove.
+            an = res.get("anomaly") or {}
+            summary = (f"{res.get('label_text')} ({res.get('confidence_pct')}% "
+                       f"| ความต่างจากปกติ {an.get('score')} เกณฑ์ {an.get('threshold')} "
+                       f"| จุดเล็ก {res.get('n_small_blobs')})")
         else:
             summary = (f"{res.get('label_text')} ({res.get('confidence_pct')}% "
                        f"| p={res.get('proba_positive')} "

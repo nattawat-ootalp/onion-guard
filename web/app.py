@@ -49,6 +49,7 @@ sys.path.insert(0, str(ROOT / "src"))
 
 from advice import build_advice  # noqa: E402
 from data_source import get_data_source, TABLE_FEATURE_COLUMNS  # noqa: E402
+import garlic_anomaly as garlic_mod  # noqa: E402
 from onion_detect import (detect_garlic_uv, detect_garlic_visible, detect_onion,  # noqa: E402
                            detect_onion_visible, normalize_to_onion)
 import predict as predict_mod  # noqa: E402
@@ -108,18 +109,30 @@ DATASETS = {
     },
 }
 
-# Which crops the staff site accepts, and whether a trained model exists for
-# each one.
+# Which crops the staff site accepts, and HOW each one is screened.
 #
-# has_model=False is not a placeholder for "model coming soon" — it changes
-# what a scan DOES. Garlic photos are measured and stored so a model can be
-# trained from them later, but nothing is classified: the shipped model was
-# fitted on 60 shallots and has never seen a garlic clove, so any label it
-# produced would be a number with no evidence behind it, printed next to the
-# same confidence figure the onion path earns honestly.
+# The two crops are screened by different kinds of model, because they have
+# different kinds of data behind them:
 #
-# The public site is deliberately absent from this: it offers screening, and
-# there is nothing to screen garlic with yet.
+#   onion   supervised classifier. Every training head carries a CompactDry
+#           YM result, so the model learned positive from negative.
+#   garlic  one-class anomaly detection. No garlic clove has a lab result —
+#           every clove photographed so far is one that looked normal. What
+#           is fitted is the spread of those normal cloves, and a new clove
+#           is screened by how far outside it falls (src/garlic_anomaly.py).
+#
+# Running the shallot classifier on garlic instead was never an option: it
+# has never seen a clove, so its label would be a number with no evidence
+# behind it, printed next to the confidence figure the onion path earns
+# honestly.
+#
+# Both report through the same LABEL_TEXT wording, which is what the anomaly
+# detector can actually support: "พบความผิดปกติที่สัมพันธ์กับเชื้อรา" claims a
+# deviation correlated with fungus, never an identification of fungus.
+#
+# The public site is deliberately absent from this: the garlic baseline is
+# fitted from a few dozen cloves and is a research-side tool, not something
+# to hand the public as a screening service.
 CROP_ONION = "onion"
 CROP_GARLIC = "garlic"
 DEFAULT_CROP = CROP_ONION
@@ -134,8 +147,15 @@ CROPS = {
         "label": "กระเทียม",
         "code_example": "GA001",
         "subject_word": "กลีบกระเทียม",
+        # No supervised classifier exists (and cannot, from one class of
+        # data); anomaly_model is what screens this crop instead.
         "has_model": False,
-        "collect_only_note": "ยังไม่มีโมเดลกระเทียม ระบบจะเก็บภาพและค่าที่วัดได้ไว้เท่านั้น "
+        "anomaly_model": True,
+        "anomaly_note": "กระเทียมตรวจโดยเทียบกับกลีบกระเทียมปกติที่เก็บไว้ — ระบบจะบอกว่า "
+                        "“ไม่พบความผิดปกติ” หรือ “พบความผิดปกติที่สัมพันธ์กับเชื้อรา” "
+                        "ยังไม่เคยเห็นกลีบที่ยืนยันด้วยผลแล็บว่าพบเชื้อ",
+        # Shown, and used, only while no baseline is available yet.
+        "collect_only_note": "ยังไม่มีค่าอ้างอิงกระเทียมปกติมากพอ ระบบจะเก็บภาพและค่าที่วัดได้ไว้เท่านั้น "
                              "ไม่มีการทำนายผล",
     },
 }
@@ -155,6 +175,123 @@ def get_model():
         _model_cfg = predict_mod.load_model_config()
         _model = predict_mod.joblib.load(predict_mod.MODEL_PATH)
     return _model, _cfg, _model_cfg
+
+
+# The garlic baseline is not a pickled model, so it is not loaded with
+# get_model(): it is either the frozen file that src/train_garlic_anomaly.py
+# writes, or — when that file does not exist yet — fitted on demand from the
+# normal cloves already stored in the database.
+#
+# Refitting is cached rather than done per scan, and re-checked on a timer so
+# newly stored cloves eventually widen the baseline without a restart. A
+# failure is cached too (for a shorter time), so a database outage does not
+# turn every garlic scan into another timeout.
+_GARLIC_TTL_OK = 15 * 60
+_GARLIC_TTL_FAIL = 2 * 60
+_garlic_cache = {"baseline": None, "reason": None, "checked": 0.0}
+_garlic_lock = threading.Lock()
+
+
+def _fit_garlic_baseline():
+    """Fit the baseline from the garlic cloves already in the database.
+
+    Only rows with no pred_label count. Those are the cloves photographed
+    before this detector existed — the ones the operator described as normal
+    garlic. A row this detector has already scored may be one of the
+    anomalies it found, and feeding those back in would teach the baseline
+    that anomalies are normal, widening it a little further with every flagged
+    clove until nothing is unusual any more. A clove with a positive
+    CompactDry result is excluded for the same reason.
+
+    Returns (baseline, reason_it_is_missing).
+    """
+    client = getattr(_data_source, "client", None)
+    if client is None:
+        return None, "ยังไม่ได้ต่อฐานข้อมูล จึงยังไม่มีค่าอ้างอิงกระเทียมปกติ"
+    try:
+        rows = client.select(
+            "scans",
+            columns="sample_code,features,pred_label,compactdry_truth",
+            filters={"crop": f"eq.{CROP_GARLIC}"},
+        )
+    except Exception as exc:  # noqa: BLE001 - screening degrades, never 500s
+        return None, f"อ่านข้อมูลกระเทียมจากฐานข้อมูลไม่สำเร็จ: {str(exc)[:120]}"
+
+    normals = [r["features"] for r in rows
+               if r.get("features")
+               and r.get("pred_label") is None
+               and r.get("compactdry_truth") != 1]
+    _, cfg, _ = get_model()
+    try:
+        baseline = garlic_mod.fit(normals, cfg=cfg,
+                                  source=f"supabase:scans?crop={CROP_GARLIC} (auto)")
+    except ValueError as exc:
+        return None, str(exc)
+    return baseline, None
+
+
+def get_garlic_baseline():
+    """(baseline, reason) — reason explains a None, for the operator to read."""
+    _, cfg, _ = get_model()
+    if not (cfg.get("garlic_anomaly") or {}).get("enabled", True):
+        return None, "ปิดการตรวจความผิดปกติของกระเทียมไว้ใน config.json"
+
+    now = time.time()
+    with _garlic_lock:
+        age = now - _garlic_cache["checked"]
+        ttl = _GARLIC_TTL_OK if _garlic_cache["baseline"] else _GARLIC_TTL_FAIL
+        if _garlic_cache["checked"] and age < ttl:
+            return _garlic_cache["baseline"], _garlic_cache["reason"]
+
+        # The frozen file wins whenever it exists: a deployed detector should
+        # be the one that was reviewed and committed, not whatever the
+        # database happened to hold this morning.
+        baseline, reason = garlic_mod.load_baseline(), None
+        if baseline is None:
+            baseline, reason = _fit_garlic_baseline()
+        _garlic_cache.update({"baseline": baseline, "reason": reason, "checked": now})
+        return baseline, reason
+
+
+def _collect_only_reason(crop):
+    """Why this scan produced no verdict, in the operator's words.
+
+    For a crop screened by the anomaly detector, "no verdict" is always a
+    missing baseline, and which reason it is (not enough normal cloves, no
+    database, switched off) decides what the operator should do next — so the
+    reason is shown, not just the fact.
+    """
+    note = CROPS[crop].get("collect_only_note", "")
+    if CROPS[crop].get("anomaly_model"):
+        _baseline, reason = get_garlic_baseline()
+        if reason:
+            return f"{note} — {reason}"
+    return note
+
+
+def crops_payload():
+    """CROPS as the page needs it, with the note that actually applies now.
+
+    Garlic's note depends on whether a baseline exists, which is a runtime
+    fact — the template cannot work it out from a static dict.
+    """
+    out = []
+    for cid, c in CROPS.items():
+        entry = dict(id=cid, **c)
+        if c.get("anomaly_model"):
+            baseline, _reason = get_garlic_baseline()
+            if baseline is not None:
+                entry["note"] = "{} (ค่าอ้างอิงจากกลีบปกติ {} ตัวอย่าง)".format(
+                    c.get("anomaly_note", ""), baseline.get("n_samples", 0))
+                entry["screening"] = "anomaly"
+            else:
+                entry["note"] = _collect_only_reason(cid)
+                entry["screening"] = "collect_only"
+        else:
+            entry["note"] = c.get("collect_only_note", "")
+            entry["screening"] = "classifier" if c.get("has_model") else "collect_only"
+        out.append(entry)
+    return out
 
 
 def _upload_cfg():
@@ -698,7 +835,7 @@ def scan():
     return render_template("scan.html", active="scan",
                             steps=[_step_payload(i, steps) for i in range(len(steps))],
                             total_steps=len(steps),
-                            crops=[dict(id=cid, **c) for cid, c in CROPS.items()],
+                            crops=crops_payload(),
                             default_crop=DEFAULT_CROP)
 
 
@@ -935,7 +1072,7 @@ def capture_status():
         "max_file_mb": u.get("max_file_mb", 25),
         "target_size": cfg["image"]["size_px"],
         "default_crop": DEFAULT_CROP,
-        "crops": [dict(id=cid, **c) for cid, c in CROPS.items()],
+        "crops": crops_payload(),
     })
 
 
@@ -1187,10 +1324,20 @@ def _save_scan(session, result, checks):
                 "pred_conf": round(float(result["confidence"]), 4),
                 "pred_proba": round(float(result["proba_positive"]), 4),
                 "decision_threshold": round(float(result["decision_threshold"]), 4),
-                "ood_status": checks["ood"].get("status"),
                 "borderline": bool(result["borderline"]),
             })
-            payload["quality_notes"]["ood"] = checks["ood"]
+            # Out-of-distribution is a classifier-only check: it compares the
+            # features against the ranges the shallot model was fitted on.
+            if checks.get("ood") is not None:
+                payload["ood_status"] = checks["ood"].get("status")
+                payload["quality_notes"]["ood"] = checks["ood"]
+            # An anomaly row stores its real score and threshold here. The
+            # pred_proba column above is the same decision expressed 0-1
+            # (0.5 == exactly on the threshold) so the two crops' rows can be
+            # listed together, but the raw score is what a later reviewer
+            # needs to see, and it does not fit in a 0-1 column.
+            if checks.get("anomaly") is not None:
+                payload["quality_notes"]["anomaly"] = checks["anomaly"]
         if table == "scans":
             payload["image_original"] = session["dir"].name
             # left null on purpose: filled in after the CompactDry culture is
@@ -1201,6 +1348,111 @@ def _save_scan(session, result, checks):
         return {"ok": True, "id": row.get("id"), "sample_code": row.get(code_col)}
     except Exception as exc:  # noqa: BLE001
         return {"ok": False, "reason": str(exc)[:200]}
+
+
+def _result_images(measured, cfg):
+    """(overlay data-URI, clean data-URI, source Path) for one measured head.
+
+    Shared by every scan path so the operator sees the same two images
+    whichever model produced the verdict.
+    """
+    overlay_uri = _png_data_uri(measured["overlay_image"])
+    clean_uri = None
+    src = Path(measured["overlay_source_path"])
+    if src.exists():
+        clean_img = cv2.imread(str(src))
+        if clean_img is not None:
+            clean_uri = _jpeg_data_uri(
+                clean_img, cfg["capture_sequence"]["preview"].get("jpeg_quality", 92))
+    return overlay_uri, clean_uri, src
+
+
+def _anomaly_session(session, session_id, crop, paths, visible_path, cfg, uv, baseline):
+    """Finish a scan for a crop screened by the one-class detector.
+
+    Measures exactly as every other path does, then asks how far the clove
+    sits outside the normal cloves' spread. The out-of-distribution check is
+    NOT run: it compares against the shallot model's feature ranges and would
+    report "out of range" for every garlic clove while saying nothing about
+    this one. The baseline comparison here is that check, done against the
+    right reference set.
+    """
+    try:
+        with _lock:
+            measured = predict_mod.measure_head(paths, cfg=cfg, visible_image_path=visible_path)
+        scored = garlic_mod.score(measured["features"], baseline)
+    except Exception as exc:  # noqa: BLE001
+        return jsonify({"error": f"ประมวลผลไม่สำเร็จ: {exc}"}), 500
+
+    overlay_uri, clean_uri, src = _result_images(measured, cfg)
+    if overlay_uri is None:
+        return jsonify({"error": "สร้างภาพ overlay ไม่สำเร็จ"}), 500
+
+    exif_report = check_exif_consistency(uv, cfg)
+    bg_report = check_background_consistency(uv, cfg)
+    scale_report = check_scale_consistency(uv, cfg)
+    framing_failed = [c["step_id"] for c in uv
+                      if not (c.get("framing") or {}).get("ok", True)]
+
+    top = [{"feature": f["feature"], "label": f["label"], "z": round(f["z"], 2),
+            "value": f["value"], "median": f["median"], "direction": f["direction"]}
+           for f in scored["top_features"]]
+    anomaly_note = {
+        "score": round(scored["score"], 3),
+        "threshold": round(scored["threshold"], 3),
+        "n_baseline_samples": scored["n_baseline_samples"],
+        "baseline_created_at": scored["baseline_created_at"],
+        "baseline_source": scored["baseline_source"],
+        "top_features": top,
+        "missing_features": scored["missing"],
+    }
+
+    # Shaped like a classifier result so _save_scan writes both crops the
+    # same way — see the comment there on what pred_proba means for a row
+    # scored this way.
+    stored = {
+        "features": measured["features"],
+        "confidence": scored["confidence"],
+        "proba_positive": scored["proba_anomaly"],
+        "decision_threshold": 0.5,
+        "borderline": scored["borderline"],
+    }
+    saved = _save_scan(session, stored, {
+        "label": scored["label"], "ood": None, "anomaly": anomaly_note,
+        "scale": scale_report, "background": bg_report, "exif": exif_report,
+        "framing_failed": framing_failed,
+    })
+    _sessions.pop(session_id, None)
+
+    expected = cfg["samples"]["n_views"]
+    return jsonify({
+        "screening": "anomaly",
+        "crop": crop,
+        "crop_label": CROPS[crop]["label"],
+        "saved_to_db": saved,
+        "sample_code": session.get("sample_code"),
+        "label": scored["label"],
+        "label_text": LABEL_TEXT[scored["label"]],
+        "confidence": scored["confidence"],
+        "confidence_pct": round(scored["confidence"] * 100, 1),
+        "borderline": scored["borderline"],
+        "anomaly": anomaly_note,
+        "processing_time": round(measured["processing_time"], 2),
+        "overlay_image": overlay_uri,
+        "clean_image": clean_uri,
+        "overlay_source": src.name,
+        "n_small_blobs": measured["features"].get("n_small_sharp_blobs_viewmax", 0),
+        "n_large_blotches": measured["features"].get("n_large_blotches_viewmax", 0),
+        "n_views_used": len(uv),
+        "expected_views": expected,
+        "partial_views": len(uv) < expected,
+        "exif_check": exif_report,
+        "background_check": bg_report,
+        "scale_check": scale_report,
+        "framing_failed_views": framing_failed,
+        "disclaimer": RESULT_DISCLAIMER,
+        "is_mock_data": _data_source.is_mock_data(),
+    })
 
 
 def _collect_only_session(session, session_id, crop, paths, visible_path, cfg, uv):
@@ -1219,14 +1471,7 @@ def _collect_only_session(session, session_id, crop, paths, visible_path, cfg, u
     except Exception as exc:  # noqa: BLE001
         return jsonify({"error": f"วัดค่าจากภาพไม่สำเร็จ: {exc}"}), 500
 
-    overlay_uri = _png_data_uri(measured["overlay_image"])
-    clean_uri = None
-    src = Path(measured["overlay_source_path"])
-    if src.exists():
-        clean_img = cv2.imread(str(src))
-        if clean_img is not None:
-            clean_uri = _jpeg_data_uri(
-                clean_img, cfg["capture_sequence"]["preview"].get("jpeg_quality", 92))
+    overlay_uri, clean_uri, src = _result_images(measured, cfg)
 
     exif_report = check_exif_consistency(uv, cfg)
     bg_report = check_background_consistency(uv, cfg)
@@ -1235,7 +1480,7 @@ def _collect_only_session(session, session_id, crop, paths, visible_path, cfg, u
                       if not (c.get("framing") or {}).get("ok", True)]
 
     saved = _save_scan(session, measured, {
-        "label": None, "ood": None, "scale": scale_report,
+        "label": None, "ood": None, "anomaly": None, "scale": scale_report,
         "background": bg_report, "exif": exif_report,
         "framing_failed": framing_failed,
     })
@@ -1245,7 +1490,7 @@ def _collect_only_session(session, session_id, crop, paths, visible_path, cfg, u
         "collect_only": True,
         "crop": crop,
         "crop_label": CROPS[crop]["label"],
-        "collect_only_note": CROPS[crop].get("collect_only_note", ""),
+        "collect_only_note": _collect_only_reason(crop),
         "saved_to_db": saved,
         "sample_code": session.get("sample_code"),
         "processing_time": round(measured["processing_time"], 2),
@@ -1307,6 +1552,16 @@ def _predict_session(dataset):
     visible_path = visible[0]["path"] if visible_usable else None
 
     crop = session.get("crop", DEFAULT_CROP)
+    if CROPS[crop].get("anomaly_model"):
+        # No baseline yet (too few normal cloves stored, or no database) —
+        # the scan still measures and stores, exactly as before this detector
+        # existed. Screening against a baseline fitted on a handful of cloves
+        # would be worse than not screening.
+        baseline, _reason = get_garlic_baseline()
+        if baseline is not None:
+            return _anomaly_session(session, session_id, crop, paths, visible_path,
+                                    cfg, uv, baseline)
+        return _collect_only_session(session, session_id, crop, paths, visible_path, cfg, uv)
     if not CROPS[crop]["has_model"]:
         return _collect_only_session(session, session_id, crop, paths, visible_path, cfg, uv)
 
@@ -1317,20 +1572,12 @@ def _predict_session(dataset):
     except Exception as exc:  # noqa: BLE001
         return jsonify({"error": f"ประมวลผลไม่สำเร็จ: {exc}"}), 500
 
-    overlay_uri = _png_data_uri(result["overlay_image"])
+    # The clean frame is the same one WITHOUT the circles, so the operator can
+    # toggle the markings off and judge the fluorescence itself rather than
+    # only seeing what the detector decided to ring.
+    overlay_uri, clean_uri, src = _result_images(result, cfg)
     if overlay_uri is None:
         return jsonify({"error": "สร้างภาพ overlay ไม่สำเร็จ"}), 500
-
-    # The same frame WITHOUT the circles, so the operator can toggle the
-    # markings off and judge the fluorescence itself rather than only seeing
-    # what the detector decided to ring.
-    clean_uri = None
-    src = Path(result["overlay_source_path"])
-    if src.exists():
-        clean_img = cv2.imread(str(src))
-        if clean_img is not None:
-            clean_uri = _jpeg_data_uri(
-                clean_img, cfg["capture_sequence"]["preview"].get("jpeg_quality", 92))
 
     label = result["label"]
     expected = cfg["samples"]["n_views"]
@@ -1353,7 +1600,7 @@ def _predict_session(dataset):
     ) if advice_cfg.get("enabled", True) else None
 
     saved = _save_scan(session, result, {
-        "label": label, "ood": ood_report, "scale": scale_report,
+        "label": label, "ood": ood_report, "anomaly": None, "scale": scale_report,
         "background": bg_report, "exif": exif_report,
         "framing_failed": framing_failed,
     })
@@ -1370,7 +1617,7 @@ def _predict_session(dataset):
         "processing_time": round(result["processing_time"], 2),
         "overlay_image": overlay_uri,
         "clean_image": clean_uri,
-        "overlay_source": Path(result["overlay_source_path"]).name,
+        "overlay_source": src.name,
         "n_small_blobs": result["features"].get("n_small_sharp_blobs_viewmax", 0),
         "n_large_blotches": result["features"].get("n_large_blotches_viewmax", 0),
         "n_views_used": len(uv),
