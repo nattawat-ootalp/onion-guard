@@ -1,0 +1,23 @@
+# ปลุก Render free tier ไม่ให้หลับ (คู่กับ supabase/keepalive.sql — มีตัวใดตัว
+# หนึ่งก็พอ แต่ตัวนี้ไม่ต้องตั้งค่าอะไรเลย เปิด repo ก็ทำงาน)
+#
+# Render free จะ spin down เมื่อไม่มี request เข้า ~15 นาที ทำให้คนแรกที่เปิด
+# เว็บตอน demo ต้องรอ ~50 วินาที งานนี้ยิง /health ทุก 5 นาทีจึงกันหลับได้
+# ตั้ง Secret ชื่อ KEEPALIVE_URL ได้ถ้า URL ไม่ตรงกับค่า default ด้านล่าง
+name: keepalive
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping /health
+        env:
+          URL: ${{ secrets.KEEPALIVE_URL || 'https://onionguard-api.onrender.com/health' }}
+        # --max-time 90 เผื่อกรณีที่มันหลับไปแล้วจริง ๆ (ต้องรอมันตื่น)
+        # ยิงไม่ติดก็ไม่ต้องให้ workflow แดง เดี๋ยวอีก 5 นาทีก็ยิงใหม่
+        run: curl -sS --max-time 90 --retry 2 "$URL" || true

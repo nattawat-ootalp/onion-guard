@@ -11,7 +11,18 @@
   // the host wake in the background while the user is still reading — by the
   // time they press "scan", the server is usually already up. Cheap and
   // best-effort; a failure here changes nothing (the real calls still run).
-  fetch(window.API_BASE + "/health").catch(function () {});
+  function ping() {
+    fetch(window.API_BASE + "/health", { cache: "no-store" }).catch(function () {});
+  }
+  ping();
+
+  // ...แล้วยิงซ้ำทุก 4 นาทีตราบใดที่หน้าเว็บยังเปิดอยู่ และยิงทันทีเมื่อผู้ใช้
+  // สลับกลับมาที่แท็บนี้ ระหว่าง demo ที่เปิดหน้าเว็บทิ้งไว้ เซิร์ฟเวอร์จึงไม่มี
+  // ช่วงเงียบยาวพอให้ Render สั่งหลับเลย
+  setInterval(ping, 4 * 60 * 1000);
+  document.addEventListener("visibilitychange", function () {
+    if (!document.hidden) ping();
+  });
 
   fetch(window.API_BASE + "/api/site-info")
     .then(function (r) { return r.json(); })

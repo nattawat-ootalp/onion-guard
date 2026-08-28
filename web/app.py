@@ -1129,7 +1129,9 @@ def _start_keepalive():
         return
 
     url = base.rstrip("/") + "/health"
-    interval = int(os.environ.get("KEEPALIVE_INTERVAL_SECONDS", "600"))
+    # 4 นาที: ต่ำกว่าเพดาน ~15 นาทีของ Render free อยู่หลายเท่า เผื่อ ping
+    # หลุดไปสองสามรอบก็ยังไม่หลับ
+    interval = int(os.environ.get("KEEPALIVE_INTERVAL_SECONDS", "240"))
 
     def _loop():
         while True:
@@ -1143,6 +1145,25 @@ def _start_keepalive():
 
 
 _start_keepalive()
+
+
+def _warm_model():
+    """โหลดโมเดลไว้ล่วงหน้าตอนบูต ไม่ต้องรอตอนสแกนครั้งแรก.
+
+    get_model() โหลดแบบ lazy ครั้งแรกที่มีคนเรียก ซึ่งตอน demo คือคนแรกที่กด
+    สแกนต้องรอ — ทำในเธรดพื้นหลังตั้งแต่เครื่องขึ้น request แรกจึงเร็วเท่ารอบ
+    ถัดไป. พังก็ไม่เป็นไร ของจริงจะโหลดเองอยู่แล้ว.
+    """
+    def _load():
+        try:
+            get_model()
+        except Exception:  # noqa: BLE001 - best effort warm-up
+            pass
+
+    threading.Thread(target=_load, name="warm-model", daemon=True).start()
+
+
+_warm_model()
 
 
 @app.route("/reports/<path:filename>")
