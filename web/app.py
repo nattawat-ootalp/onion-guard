@@ -130,9 +130,11 @@ DATASETS = {
 # detector can actually support: "พบความผิดปกติที่สัมพันธ์กับเชื้อรา" claims a
 # deviation correlated with fungus, never an identification of fungus.
 #
-# The public site is deliberately absent from this: the garlic baseline is
-# fitted from a few dozen cloves and is a research-side tool, not something
-# to hand the public as a screening service.
+# public=True means the standalone AI site may offer the crop as well. It is
+# not enough on its own: the public site only ever screens (its rows are never
+# training data), so a crop appears there only while it HAS a working model —
+# garlic drops off the public picker by itself whenever its baseline is
+# unavailable, instead of quietly collecting photos nobody will train on.
 CROP_ONION = "onion"
 CROP_GARLIC = "garlic"
 DEFAULT_CROP = CROP_ONION
@@ -142,6 +144,7 @@ CROPS = {
         "code_example": "S001",
         "subject_word": "หัวหอม",
         "has_model": True,
+        "public": True,
     },
     CROP_GARLIC: {
         "label": "กระเทียม",
@@ -151,6 +154,7 @@ CROPS = {
         # data); anomaly_model is what screens this crop instead.
         "has_model": False,
         "anomaly_model": True,
+        "public": True,
         "anomaly_note": "กระเทียมตรวจโดยเทียบกับกลีบกระเทียมปกติที่เก็บไว้ — ระบบจะบอกว่า "
                         "“ไม่พบความผิดปกติ” หรือ “พบความผิดปกติที่สัมพันธ์กับเชื้อรา” "
                         "ยังไม่เคยเห็นกลีบที่ยืนยันด้วยผลแล็บว่าพบเชื้อ",
@@ -253,6 +257,53 @@ def get_garlic_baseline():
         return baseline, reason
 
 
+# public_scans only gained its crop column in migration 002, and DDL cannot be
+# run through the REST API — so this is a probe the app reads, not something it
+# can fix. Until the column exists the public site keeps offering shallots
+# only: a garlic row stored in a table that cannot say which crop it is would
+# be indistinguishable from a shallot one, and the crop is the one thing that
+# cannot be recomputed later.
+_PUBLIC_CROP_TTL_OK = 15 * 60
+_PUBLIC_CROP_TTL_FAIL = 2 * 60
+_public_crop_cache = {"ok": None, "checked": 0.0}
+
+
+def public_table_has_crop():
+    client = getattr(_data_source, "client", None)
+    if client is None:
+        return False
+    now = time.time()
+    ttl = _PUBLIC_CROP_TTL_OK if _public_crop_cache["ok"] else _PUBLIC_CROP_TTL_FAIL
+    if _public_crop_cache["ok"] is not None and now - _public_crop_cache["checked"] < ttl:
+        return _public_crop_cache["ok"]
+    try:
+        client.select(DATASETS[DATASET_PUBLIC]["table"], columns="crop", limit=1)
+        ok = True
+    except Exception:  # noqa: BLE001 - a missing column reads as an error here
+        ok = False
+    _public_crop_cache.update({"ok": ok, "checked": now})
+    return ok
+
+
+def public_crops():
+    """Crops the public site may offer RIGHT NOW.
+
+    Three conditions, all of which can change without a deploy: the crop is
+    marked public, its rows can record which crop they are, and it currently
+    has a model that produces a verdict. A crop that would only collect data
+    is dropped — collecting on the public site is what public_scans exists to
+    prevent.
+    """
+    out = []
+    for c in crops_payload():
+        if not c.get("public") or c.get("screening") == "collect_only":
+            continue
+        if c["id"] != CROP_ONION and not public_table_has_crop():
+            continue
+        out.append(c)
+    return out
+
+
 def _collect_only_reason(crop):
     """Why this scan produced no verdict, in the operator's words.
 
@@ -314,15 +365,25 @@ def capture_steps():
     return cfg["capture_sequence"]["steps"]
 
 
-def _step_payload(index, steps):
+def _step_payload(index, steps, crop=None):
+    """One capture step as the page needs it.
+
+    The prompt names what is being photographed, and that word depends on the
+    crop the operator picks AFTER this payload is sent — so both forms go out:
+    `prompt` already filled in for one crop (the default, or `crop` when the
+    caller knows it), and `prompt_template` with the {subject} placeholder
+    intact so the page can refill it the moment the picker changes.
+    """
     if index >= len(steps):
         return None
     step = steps[index]
+    subject = CROPS[crop or DEFAULT_CROP]["subject_word"]
     return {
         "index": index,
         "id": step["id"],
         "kind": step.get("kind", "uv"),
-        "prompt": step["prompt"],
+        "prompt": step["prompt"].replace("{subject}", subject),
+        "prompt_template": step["prompt"],
         "button": step.get("button", "เลือกภาพ"),
         "required": step.get("required", True),
         "step_number": index + 1,
@@ -950,14 +1011,18 @@ def api_public_scans():
     except ValueError:
         limit = 200
     try:
+        columns = ("id,scan_code,captured_at,pred_label,pred_conf,pred_proba,"
+                   "ood_status,borderline,framing_ok")
+        if public_table_has_crop():
+            columns += ",crop"
         rows = client.select(
             DATASETS[DATASET_PUBLIC]["table"],
-            columns="id,scan_code,captured_at,pred_label,pred_conf,pred_proba,"
-                    "ood_status,borderline,framing_ok",
+            columns=columns,
             order="captured_at.desc",
             limit=limit,
         )
         return jsonify({"rows": rows, "label_text": LABEL_TEXT,
+                        "crops": {c["id"]: c["label"] for c in public_crops()},
                         "disclaimer": RESULT_DISCLAIMER})
     except Exception as exc:  # noqa: BLE001
         return jsonify({"error": str(exc)[:200], "rows": []}), 500
@@ -1061,9 +1126,16 @@ def reports(filename):
 
 @app.route("/capture/status")
 def capture_status():
+    """Capture protocol + the crop list for the caller's site.
+
+    ?dataset=public narrows the crops to the ones the standalone AI site may
+    offer (see public_crops). The staff page asks without it and gets every
+    crop, including any that can only collect data at the moment.
+    """
     _, cfg, _ = get_model()
     steps = capture_steps()
     u = _upload_cfg()
+    public = request.args.get("dataset") == DATASET_PUBLIC
     return jsonify({
         "mode": "phone_upload",
         "total_steps": len(steps),
@@ -1072,7 +1144,7 @@ def capture_status():
         "max_file_mb": u.get("max_file_mb", 25),
         "target_size": cfg["image"]["size_px"],
         "default_crop": DEFAULT_CROP,
-        "crops": crops_payload(),
+        "crops": public_crops() if public else crops_payload(),
     })
 
 
@@ -1101,13 +1173,16 @@ def _capture(dataset):
     retake = request.form.get("retake") == "true"
     sample_code = (request.form.get("sample_code") or "").strip()
 
-    # Public scans are onion-only: the public site screens, and no garlic
-    # model exists to screen with.
     crop = (request.form.get("crop") or DEFAULT_CROP).strip()
-    if dataset == DATASET_PUBLIC:
-        crop = CROP_ONION
     if crop not in CROPS:
         return jsonify({"error": f"ชนิดพืชไม่ถูกต้อง: {crop}"}), 400
+    # The public site's crop list is a runtime fact (see public_crops), so the
+    # page can be holding a stale one. Refusing is deliberate: silently
+    # scanning the clove as a shallot instead would hand back a confident
+    # verdict from a model that has never seen garlic.
+    if dataset == DATASET_PUBLIC and crop not in {c["id"] for c in public_crops()}:
+        return jsonify({"error": f"ตอนนี้เว็บสาธารณะยังคัดกรอง{CROPS[crop]['label']}ไม่ได้ "
+                                 "กรุณาโหลดหน้านี้ใหม่แล้วลองอีกครั้ง"}), 400
 
     if DATASETS[dataset]["requires_sample_code"]:
         # Required for research scans: one whose sample code is unknown can
@@ -1230,7 +1305,7 @@ def _capture(dataset):
             "warnings": warnings,
         })
 
-    next_step = _step_payload(session["step_index"], steps)
+    next_step = _step_payload(session["step_index"], steps, session.get("crop"))
     return jsonify({
         "session_id": session_id,
         "accepted": accepted,
@@ -1267,7 +1342,7 @@ def capture_skip():
         return jsonify({"error": f"ขั้นตอนนี้ ({step['id']}) จำเป็นต้องมีภาพ ข้ามไม่ได้"}), 400
 
     session["step_index"] += 1
-    next_step = _step_payload(session["step_index"], steps)
+    next_step = _step_payload(session["step_index"], steps, session.get("crop"))
     return jsonify({
         "session_id": session_id,
         "skipped": step["id"],
@@ -1313,7 +1388,10 @@ def _save_scan(session, result, checks):
                 "framing_failed_views": checks["framing_failed"],
             },
         }
-        if table == "scans":
+        # public_scans can only take a crop once migration 002 has been run
+        # (see supabase/migrations/002_add_crop_public_scans.sql); sending the
+        # column before that fails the whole insert, losing the scan.
+        if table == "scans" or public_table_has_crop():
             payload["crop"] = session.get("crop", DEFAULT_CROP)
         # A crop with no model produces no prediction, so every model-derived
         # column stays null. Writing 0 or "unknown" instead would make an
@@ -1608,6 +1686,9 @@ def _predict_session(dataset):
     _sessions.pop(session_id, None)
 
     return jsonify({
+        "screening": "classifier",
+        "crop": crop,
+        "crop_label": CROPS[crop]["label"],
         "saved_to_db": saved,
         "sample_code": session.get("sample_code"),
         "label": label,

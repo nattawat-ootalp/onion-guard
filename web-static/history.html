@@ -71,6 +71,7 @@
         <thead>
           <tr>
             <th>รหัสอ้างอิง</th>
+            <th>ชนิดพืช</th>
             <th>เวลา</th>
             <th>ผลคัดกรอง</th>
             <th class="num">ความมั่นใจ</th>
@@ -91,7 +92,7 @@
 <footer class="sitefooter">
   <div class="container">
     <p id="footer-disclaimer">หมายเหตุ: เป็นระบบคัดกรองเบื้องต้น ไม่ใช่การยืนยันทางห้องปฏิบัติการ</p>
-    <p class="sitefooter-meta">OnionGuard · คัดกรองจากภาพถ่ายใต้แสง UV 365 นาโนเมตร คู่กับภาพแสงปกติ (ถ้ามี) ต่อหอมแดง 1 หัว</p>
+    <p class="sitefooter-meta">OnionGuard · คัดกรองจากภาพถ่ายใต้แสง UV 365 นาโนเมตร คู่กับภาพแสงปกติ (ถ้ามี) ต่อ 1 ตัวอย่าง</p>
   </div>
 </footer>
 
@@ -111,7 +112,16 @@
   // the system screens for an anomaly correlated with fungus, it does not
   // identify fungus.
   const LABEL = { 1: 'พบความผิดปกติที่สัมพันธ์กับเชื้อรา', 0: 'ไม่พบความผิดปกติ' };
+  // ชื่อไทยของแต่ละพืชมาจากเซิร์ฟเวอร์ ไม่ได้เขียนตายไว้ที่นี่
+  let CROP_LABELS = {};
   let rows = [];
+
+  // แถวที่บันทึกก่อนมี migration 002 ไม่มีคอลัมน์ crop เลย ซึ่งแปลว่า
+  // "ตอนนั้นเว็บนี้มีแต่หอมแดง" ไม่ใช่ "ไม่รู้ว่าพืชอะไร"
+  function cropOf(r) {
+    const id = r.crop || 'onion';
+    return CROP_LABELS[id] || id;
+  }
 
   function pill(kind, text) {
     const span = document.createElement('span');
@@ -136,7 +146,7 @@
     const out = [];
     if (r.ood_status === 'out_of_range') out.push('ภาพอยู่นอกช่วงข้อมูลที่ใช้ฝึก');
     if (r.borderline) out.push('ค่าก้ำกึ่ง');
-    if (r.framing_ok === false) out.push('หาตำแหน่งหัวหอมไม่สำเร็จ');
+    if (r.framing_ok === false) out.push('หาตำแหน่งตัวอย่างในภาพไม่สำเร็จ');
     return out;
   }
 
@@ -145,7 +155,7 @@
     rows.forEach(function (r) {
       const flags = flagsFor(r);
       const tr = document.createElement('tr');
-      tr.dataset.code = (r.scan_code || '').toLowerCase();
+      tr.dataset.code = ((r.scan_code || '') + ' ' + cropOf(r)).toLowerCase();
       tr.dataset.label = (r.pred_label === null || r.pred_label === undefined) ? 'na' : String(r.pred_label);
       tr.dataset.flag = flags.length ? 'flagged' : 'ok';
 
@@ -153,6 +163,10 @@
       code.className = 'code';
       code.textContent = r.scan_code || '—';
       tr.appendChild(code);
+
+      const cropTd = document.createElement('td');
+      cropTd.textContent = cropOf(r);
+      tr.appendChild(cropTd);
 
       const when = document.createElement('td');
       when.textContent = formatTime(r.captured_at);
@@ -213,6 +227,7 @@
         return;
       }
       rows = res.d.rows || [];
+      CROP_LABELS = res.d.crops || {};
       if (!rows.length) {
         pageSub.textContent = 'ยังไม่มีการสแกน';
         countEl.textContent = '';

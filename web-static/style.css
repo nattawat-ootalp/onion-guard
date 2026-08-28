@@ -153,6 +153,14 @@ table.data .pill { white-space: normal; min-width: 9.5rem; }
 
 .field { margin-bottom: 16px; }
 .field-label { display: block; margin-bottom: 6px; font-weight: 600; font-size: 0.92rem; }
+.cropchoice { display: flex; gap: 10px; flex-wrap: wrap; }
+.cropoption {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 8px 14px; border: 1px solid var(--rule); border-radius: 8px;
+  cursor: pointer; font-weight: 500;
+}
+.cropoption:has(input:checked) { border-color: var(--navy); background: var(--navy-tint); }
+.cropoption:has(input:disabled) { opacity: 0.55; cursor: not-allowed; }
 .field-hint { margin: 4px 0 0; font-size: 0.85rem; color: var(--ink-muted); }
 
 input[type="file"], input[type="search"], select {

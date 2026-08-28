@@ -147,18 +147,19 @@
       {
         "id": "V1",
         "kind": "uv",
-        "prompt": "ภาพหอมแดงใต้แสง UV (มุมเดียว)",
+        "prompt": "ภาพ{subject}ใต้แสง UV (มุมเดียว)",
         "button": "เลือกภาพ"
       },
       {
         "id": "VISIBLE",
         "kind": "visible",
-        "prompt": "ถ่ายหัวเดิมซ้ำด้วยแสงปกติ — ห้ามขยับกล้องหรือหัวหอม เปิดไฟห้อง (ปิดไฟ UV) แล้วถ่ายอีกใบ",
+        "prompt": "ถ่าย{subject}เดิมซ้ำด้วยแสงปกติ — ห้ามขยับกล้องหรือ{subject} เปิดไฟห้อง (ปิดไฟ UV) แล้วถ่ายอีกใบ",
         "button": "เลือกภาพ",
         "required": false,
         "_required_why": "Optional cross-check only (see uv_exclusive_dot_frac / visible_features.py, which already has a sentinel value for 'no visible photo supplied'). A screening result from the UV photo alone must still work when the operator has no chance to re-light the box."
       }
     ],
+    "_prompt_subject_why": "{subject} ในข้อความจะถูกแทนด้วยคำเรียกของพืชที่ผู้ใช้เลือก (subject_word ใน web/app.py > CROPS เช่น หัวหอม / กลีบกระเทียม) เขียนคำว่า “หอมแดง” ตายตัวไม่ได้แล้ว เพราะหน้าเดียวกันใช้สแกนได้สองพืช — เซิร์ฟเวอร์ส่งทั้งข้อความที่แทนค่าแล้ว (prompt) และต้นฉบับ (prompt_template) ให้หน้าเว็บแทนใหม่เองตอนผู้ใช้เปลี่ยนชนิดพืช",
     "_full_protocol_example": [
       {
         "id": "V1",

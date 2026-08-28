@@ -36,7 +36,7 @@
 
   <div class="pagehead">
     <h2>สแกนตัวอย่าง</h2>
-    <p>ถ่ายภาพหอมแดงใต้แสง UV 365 นาโนเมตร ด้วยมือถือ แล้วอัปโหลดเพื่อคัดกรองเบื้องต้น</p>
+    <p>ถ่ายภาพตัวอย่างใต้แสง UV 365 นาโนเมตร ด้วยมือถือ แล้วอัปโหลดเพื่อคัดกรองเบื้องต้น</p>
   </div>
 
   <!-- ขั้นที่ 1: ยังไม่ได้เลือกไฟล์ -->
@@ -53,6 +53,16 @@
       <h3 class="panel-title" id="upload-heading">กำลังโหลดขั้นตอนการถ่าย...</h3>
       <p class="stepcount" id="step-count"></p>
       <p class="stepprompt" id="step-prompt"></p>
+
+      <!-- ตัวเลือกชนิดพืช: ซ่อนไว้จนกว่าเซิร์ฟเวอร์จะบอกว่ามีให้เลือกมากกว่าหนึ่งชนิด
+           รายการมาจาก /capture/status?dataset=public ไม่ได้เขียนตายไว้ที่นี่
+           เพราะพืชที่คัดกรองได้ "ตอนนี้" ขึ้นกับว่ามีโมเดลพร้อมหรือไม่ -->
+      <div class="field hidden" id="crop-field">
+        <span class="field-label">ชนิดพืช</span>
+        <div class="cropchoice" id="crop-choice"></div>
+        <p class="field-hint">เลือกก่อนอัปโหลด — เปลี่ยนกลางคันไม่ได้ ต้องเริ่มใหม่</p>
+        <div class="notebox hidden" id="crop-note"></div>
+      </div>
 
       <div class="field">
         <label class="field-label" for="images">ไฟล์ภาพ (เลือกทีละภาพตามขั้นตอนด้านบน)</label>
@@ -156,7 +166,9 @@
 <footer class="sitefooter">
   <div class="container">
     <p id="footer-disclaimer">หมายเหตุ: เป็นระบบคัดกรองเบื้องต้น ไม่ใช่การยืนยันทางห้องปฏิบัติการ</p>
-    <p class="sitefooter-meta">OnionGuard · จำแนกด้วย Random Forest จากภาพถ่ายใต้แสง UV 365 นาโนเมตร คู่กับภาพแสงปกติ (ถ้ามี) ต่อหอมแดง 1 หัว</p>
+    <p class="sitefooter-meta">OnionGuard · หอมแดง: จำแนกด้วยโมเดลที่ฝึกจากผลเพาะเชื้อ CompactDry YM ·
+      กระเทียม: เทียบกับกลีบปกติที่เก็บไว้ (ตรวจความผิดปกติ ไม่ได้ฝึกจากผลแล็บ) ·
+      ทั้งคู่ใช้ภาพถ่ายใต้แสง UV 365 นาโนเมตร คู่กับภาพแสงปกติ (ถ้ามี) ต่อ 1 ตัวอย่าง</p>
   </div>
 </footer>
 
@@ -190,8 +202,13 @@
   const resultImg = document.getElementById('result-img');
   const resultCaption = document.getElementById('result-caption');
 
+  const cropField = document.getElementById('crop-field');
+  const cropChoice = document.getElementById('crop-choice');
+  const cropNote = document.getElementById('crop-note');
+
   let TOTAL = 0;
   let FIRST_STEP = null;
+  let CROPS = [];
   let sessionId = null;
   let busy = true; // stays busy until /capture/status has loaded
   let images = { overlay: null, clean: null };
@@ -199,6 +216,64 @@
   let acceptedItems = [];
   let issueList = [];
   let currentRequired = true;
+
+  // ---- ชนิดพืช ----
+  // ล็อกทันทีที่อัปโหลดภาพแรก เพราะเซิร์ฟเวอร์ไม่ให้เปลี่ยนพืชกลางเซสชันอยู่แล้ว
+  // (ภาพหัวเดียวกันจะถูกบันทึกผิดชนิด) หน้าเว็บจึงต้องไม่เปิดให้กดจนโดนปฏิเสธ
+  function cropRadios() {
+    return Array.from(cropChoice.querySelectorAll('input[name="crop"]'));
+  }
+
+  function currentCrop() {
+    const picked = cropRadios().find(function (r) { return r.checked; });
+    return picked ? picked.value : null;
+  }
+
+  function lockCrop(locked) {
+    cropRadios().forEach(function (r) { r.disabled = locked; });
+  }
+
+  // ข้อความบอกขั้นตอนพูดถึง "หัวหอม" หรือ "กลีบกระเทียม" ตามพืชที่เลือก
+  // (เซิร์ฟเวอร์ส่ง prompt_template ที่ยังมี {subject} มาให้แทนค่าเอง)
+  function promptFor(step) {
+    const picked = cropRadios().find(function (r) { return r.checked; });
+    const word = picked ? (picked.dataset.subjectWord || '') : '';
+    const t = (step && (step.prompt_template || step.prompt)) || '';
+    return word ? t.split('{subject}').join(word) : t;
+  }
+
+  function refreshCropNote() {
+    const picked = cropRadios().find(function (r) { return r.checked; });
+    const note = picked ? (picked.dataset.note || '') : '';
+    cropNote.textContent = note;
+    cropNote.classList.toggle('hidden', !note);
+    // เปลี่ยนพืชได้ก่อนอัปโหลดภาพแรกเท่านั้น ตอนนั้นจึงยังอยู่ขั้นตอนแรกเสมอ
+    if (!sessionId && FIRST_STEP) stepPrompt.textContent = promptFor(FIRST_STEP);
+  }
+
+  function renderCrops(crops) {
+    CROPS = crops || [];
+    cropChoice.innerHTML = '';
+    CROPS.forEach(function (c, i) {
+      const label = document.createElement('label');
+      label.className = 'cropoption';
+      const radio = document.createElement('input');
+      radio.type = 'radio';
+      radio.name = 'crop';
+      radio.value = c.id;
+      radio.dataset.note = c.note || '';
+      radio.dataset.subjectWord = c.subject_word || '';
+      if (i === 0) radio.checked = true;
+      radio.addEventListener('change', refreshCropNote);
+      const span = document.createElement('span');
+      span.textContent = c.label;
+      label.appendChild(radio); label.appendChild(span);
+      cropChoice.appendChild(label);
+    });
+    // พืชชนิดเดียว = ไม่มีอะไรให้เลือก ซ่อนทั้งบล็อกดีกว่าโชว์ตัวเลือกเดียว
+    cropField.classList.toggle('hidden', CROPS.length < 2);
+    refreshCropNote();
+  }
 
   function showError(m) { errorText.textContent = m; errorPanel.classList.remove('hidden'); }
   function clearError() { errorPanel.classList.add('hidden'); }
@@ -281,7 +356,12 @@
 
     const fd = new FormData();
     files.forEach(function (f) { fd.append('images', f); });
-    if (sessionId) fd.append('session_id', sessionId);
+    if (sessionId) {
+      fd.append('session_id', sessionId);
+    } else if (currentCrop()) {
+      // ส่งเฉพาะภาพแรกของเซสชัน หลังจากนั้นชนิดพืชถูกผูกกับเซสชันไปแล้ว
+      fd.append('crop', currentCrop());
+    }
 
     apiFetch('/public/capture', { method: 'POST', body: fd }, statusText)
       .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, data: d }; }); })
@@ -290,6 +370,7 @@
         const d = res.data;
         sessionId = d.session_id;
 
+        lockCrop(true);
         acceptedItems = acceptedItems.concat(d.accepted);
         d.accepted.forEach(function (item) {
           (item.warnings || []).forEach(function (w) { issueList.push(item.id + ': ' + w); });
@@ -304,7 +385,7 @@
         } else {
           currentRequired = d.next_step.required !== false;
           stepCount.textContent = 'ขั้นตอนที่ ' + d.next_step.step_number + ' จาก ' + d.next_step.total_steps;
-          stepPrompt.textContent = d.next_step.prompt;
+          stepPrompt.textContent = promptFor(d.next_step);
           uploadBtn.textContent = d.next_step.button;
           uploadBtn.disabled = true;
           refreshSkipBtn();
@@ -334,7 +415,7 @@
         } else {
           currentRequired = d.next_step.required !== false;
           stepCount.textContent = 'ขั้นตอนที่ ' + d.next_step.step_number + ' จาก ' + d.next_step.total_steps;
-          stepPrompt.textContent = d.next_step.prompt;
+          stepPrompt.textContent = promptFor(d.next_step);
           uploadBtn.textContent = d.next_step.button;
           uploadBtn.disabled = true;
           refreshSkipBtn();
@@ -432,6 +513,7 @@
     // Server-generated code — shown so a result can be found again in the
     // history page, not typed in by the user.
     let stxt = d.sample_code ? ('รหัสอ้างอิง ' + d.sample_code) : '';
+    if (d.crop_label) stxt += (stxt ? ' · ' : '') + d.crop_label;
     if (d.saved_to_db && !d.saved_to_db.ok) {
       stxt += ' — ⚠ บันทึกลงฐานข้อมูลไม่สำเร็จ: ' + (d.saved_to_db.reason || '');
     } else if (d.saved_to_db && d.saved_to_db.ok) {
@@ -486,7 +568,23 @@
     const warn = document.getElementById('partial-warning');
     const notes = [];
     if (d.ood_check && d.ood_check.status === 'out_of_range') notes.push(d.ood_check.message);
-    if (d.borderline) {
+    // กระเทียมตรวจแบบเทียบกับ "ของปกติ" ต้องบอกให้ชัดว่าเทียบกับอะไร
+    // เพราะระบบยังไม่เคยเห็นกลีบที่ผลแล็บยืนยันว่าพบเชื้อเลยแม้แต่กลีบเดียว
+    if (d.anomaly) {
+      notes.push('ผลนี้ได้จากการเทียบกับกลีบกระเทียมปกติ ' + d.anomaly.n_baseline_samples +
+        ' ตัวอย่าง — ระบบยังไม่เคยเห็นกลีบที่ผลแล็บยืนยันว่าพบเชื้อ จึงบอกได้ว่า “ต่างจากปกติ” ' +
+        'ไม่ใช่การระบุว่าเป็นเชื้อชนิดใด');
+      if (isFound && d.anomaly.top_features && d.anomaly.top_features.length) {
+        notes.push('ค่าที่ต่างจากปกติมากที่สุด: ' + d.anomaly.top_features.map(function (f) {
+          return f.label + ' (ห่างจากค่ากลาง ' + f.z.toFixed(1) + ' เท่าของช่วงปกติ)';
+        }).join(' · '));
+      }
+    }
+    if (d.borderline && d.anomaly) {
+      notes.push('ผลนี้ก้ำกึ่ง — ความต่างจากปกติอยู่ที่ ' + d.anomaly.score.toFixed(2) +
+        ' ขณะที่เกณฑ์คือ ' + d.anomaly.threshold.toFixed(2) +
+        ' ซึ่งเกือบเท่ากัน ควรถ่ายซ้ำหรือส่งเพาะเชื้อยืนยัน');
+    } else if (d.borderline) {
       notes.push('ผลนี้ก้ำกึ่ง — โมเดลให้ความน่าจะเป็นฝั่ง “พบ” ที่ ' +
         (d.proba_positive * 100).toFixed(1) + '% ซึ่งเอนไปทางพบ แต่ยังไม่ถึงเกณฑ์ ' +
         (d.decision_threshold * 100).toFixed(1) + '% จึงรายงานว่าไม่พบ ควรตรวจซ้ำหรือส่งเพาะเชื้อยืนยัน');
@@ -516,10 +614,12 @@
     uploadShotsGrid.innerHTML = '';
     uploadShotsWrap.classList.add('hidden');
     input.value = '';
+    lockCrop(false);
+    refreshCropNote();
     uploadBtn.disabled = true;
     uploadBtn.textContent = FIRST_STEP.button;
     stepCount.textContent = 'ขั้นตอนที่ ' + FIRST_STEP.step_number + ' จาก ' + FIRST_STEP.total_steps;
-    stepPrompt.textContent = FIRST_STEP.prompt;
+    stepPrompt.textContent = promptFor(FIRST_STEP);
     clearError();
     refreshSkipBtn();
     document.getElementById('framing-warning').classList.add('hidden');
@@ -530,11 +630,12 @@
   // ---- โหลดขั้นตอนการถ่ายจากเซิร์ฟเวอร์ก่อนเปิดให้ใช้งาน ----
   function initSteps() {
     setBusy(true, statusText, 'กำลังเชื่อมต่อเซิร์ฟเวอร์...');
-    apiFetch('/capture/status', {}, statusText)
+    apiFetch('/capture/status?dataset=public', {}, statusText)
       .then(function (r) { return r.json(); })
       .then(function (d) {
         TOTAL = d.total_steps;
         FIRST_STEP = d.steps[0];
+        renderCrops(d.crops);
         uploadHeading.textContent = 'เลือกภาพ ' + TOTAL + ' ภาพ ตามลำดับ';
         input.disabled = false;
         resetAll();

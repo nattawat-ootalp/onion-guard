@@ -30,6 +30,7 @@
           <input type="radio" name="crop" value="{{ c.id }}"
                  data-code-example="{{ c.code_example }}"
                  data-screening="{{ c.screening }}"
+                 data-subject-word="{{ c.subject_word }}"
                  data-note="{{ c.note | default('', true) }}"
                  {% if c.id == default_crop %}checked{% endif %}>
           <span>{{ c.label }}</span>
@@ -202,10 +203,22 @@
     return picked || cropRadios[0];
   }
 
+  // ข้อความบอกขั้นตอนพูดถึง "หัวหอม" หรือ "กลีบกระเทียม" ตามพืชที่เลือก
+  // เซิร์ฟเวอร์ส่ง prompt_template ที่ยังมี {subject} อยู่มาให้แทนค่าตรงนี้
+  // (ดู config.json > capture_sequence > _prompt_subject_why)
+  function promptFor(step) {
+    const c = currentCrop();
+    const word = c ? (c.dataset.subjectWord || '') : '';
+    const t = (step && (step.prompt_template || step.prompt)) || '';
+    return word ? t.split('{subject}').join(word) : t;
+  }
+
   function refreshCrop() {
     const c = currentCrop();
     if (!c) return;
     sampleCode.placeholder = 'เช่น ' + c.dataset.codeExample;
+    // เปลี่ยนพืชได้ก่อนอัปโหลดภาพแรกเท่านั้น ตอนนั้นจึงยังอยู่ขั้นตอนแรกเสมอ
+    if (!sessionId) stepPrompt.textContent = promptFor(FIRST_STEP);
     const note = c.dataset.note || '';
     cropNote.textContent = note;
     // A crop that IS screened explains how; only a crop that cannot be
@@ -331,7 +344,7 @@
         } else {
           currentRequired = d.next_step.required !== false;
           stepCount.textContent = 'ขั้นตอนที่ ' + d.next_step.step_number + ' จาก ' + d.next_step.total_steps;
-          stepPrompt.textContent = d.next_step.prompt;
+          stepPrompt.textContent = promptFor(d.next_step);
           uploadBtn.textContent = d.next_step.button;
           uploadBtn.disabled = true; // re-enabled once a file is chosen for this step
           refreshSkipBtn();
@@ -361,7 +374,7 @@
         } else {
           currentRequired = d.next_step.required !== false;
           stepCount.textContent = 'ขั้นตอนที่ ' + d.next_step.step_number + ' จาก ' + d.next_step.total_steps;
-          stepPrompt.textContent = d.next_step.prompt;
+          stepPrompt.textContent = promptFor(d.next_step);
           uploadBtn.textContent = d.next_step.button;
           uploadBtn.disabled = true;
           refreshSkipBtn();
@@ -579,7 +592,7 @@
     uploadBtn.disabled = true;
     uploadBtn.textContent = FIRST_STEP.button;
     stepCount.textContent = 'ขั้นตอนที่ ' + FIRST_STEP.step_number + ' จาก ' + FIRST_STEP.total_steps;
-    stepPrompt.textContent = FIRST_STEP.prompt;
+    stepPrompt.textContent = promptFor(FIRST_STEP);
     clearError();
     refreshSkipBtn();
     document.getElementById('framing-warning').classList.add('hidden');
