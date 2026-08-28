@@ -878,8 +878,8 @@ def add_cors_headers(response):
 
 
 @app.after_request
-def no_cache_html(response):
-    """Stop the browser caching pages and the stylesheet.
+def no_cache_dynamic(response):
+    """Stop the browser caching pages, the stylesheet, and API responses.
 
     The page's JavaScript is inline in the template, so a cached copy keeps
     running OLD logic against the CURRENT API — which already caused a real
@@ -887,8 +887,17 @@ def no_cache_html(response):
     browser showed a page built before that warning existed, so the result
     looked clean when it was not. Safety warnings must never be served from a
     stale cache. Data URIs in responses are unaffected.
+
+    JSON is on the list for the same reason, learned the same way: every API
+    response here describes what the server can do RIGHT NOW — which crops
+    have a working model, what the capture protocol is, what a scan measured.
+    None of it carries a validator, so a browser is free to reuse an old copy
+    for as long as it likes. A phone did exactly that and kept showing a
+    one-crop picker for an hour after the second crop went live, with no way
+    for the person holding it to tell.
     """
-    if response.mimetype in ("text/html", "text/css", "application/javascript"):
+    if response.mimetype in ("text/html", "text/css", "application/javascript",
+                             "application/json"):
         response.headers["Cache-Control"] = "no-store, must-revalidate"
         response.headers["Pragma"] = "no-cache"
     return response
