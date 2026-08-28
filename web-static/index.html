@@ -230,7 +230,11 @@
   }
 
   function lockCrop(locked) {
-    cropRadios().forEach(function (r) { r.disabled = locked; });
+    cropRadios().forEach(function (r, i) {
+      const c = CROPS[i] || {};
+      // ปลดล็อกได้เฉพาะพืชที่คัดกรองได้จริง ๆ เท่านั้น
+      r.disabled = locked || c.available === false;
+    });
   }
 
   // ข้อความบอกขั้นตอนพูดถึง "หัวหอม" หรือ "กลีบกระเทียม" ตามพืชที่เลือก
@@ -254,7 +258,8 @@
   function renderCrops(crops) {
     CROPS = crops || [];
     cropChoice.innerHTML = '';
-    CROPS.forEach(function (c, i) {
+    let firstAvailable = null;
+    CROPS.forEach(function (c) {
       const label = document.createElement('label');
       label.className = 'cropoption';
       const radio = document.createElement('input');
@@ -263,15 +268,23 @@
       radio.value = c.id;
       radio.dataset.note = c.note || '';
       radio.dataset.subjectWord = c.subject_word || '';
-      if (i === 0) radio.checked = true;
+      // พืชที่ตอนนี้ยังคัดกรองไม่ได้ยังโชว์อยู่ แต่กดไม่ได้ และบอกเหตุผล —
+      // ตัวเลือกที่หายไปเฉย ๆ ทำให้แยกไม่ออกว่า "ยังไม่มีฟีเจอร์นี้" กับ
+      // "โมเดลใช้ไม่ได้ตอนนี้" ต่างกันอย่างไร
+      if (c.available === false) {
+        radio.disabled = true;
+        radio.dataset.note = c.unavailable_reason || c.note || '';
+      } else if (!firstAvailable) {
+        firstAvailable = radio;
+      }
       radio.addEventListener('change', refreshCropNote);
       const span = document.createElement('span');
       span.textContent = c.label;
       label.appendChild(radio); label.appendChild(span);
       cropChoice.appendChild(label);
     });
-    // พืชชนิดเดียว = ไม่มีอะไรให้เลือก ซ่อนทั้งบล็อกดีกว่าโชว์ตัวเลือกเดียว
-    cropField.classList.toggle('hidden', CROPS.length < 2);
+    if (firstAvailable) firstAvailable.checked = true;
+    cropField.classList.toggle('hidden', CROPS.length === 0);
     refreshCropNote();
   }
 

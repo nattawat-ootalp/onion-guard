@@ -286,22 +286,37 @@ def public_table_has_crop():
 
 
 def public_crops():
-    """Crops the public site may offer RIGHT NOW.
+    """Every crop the public site lists, each flagged with whether it can be
+    scanned RIGHT NOW.
 
-    Three conditions, all of which can change without a deploy: the crop is
-    marked public, its rows can record which crop they are, and it currently
-    has a model that produces a verdict. A crop that would only collect data
-    is dropped — collecting on the public site is what public_scans exists to
-    prevent.
+    Unavailable crops are returned rather than hidden: a picker that silently
+    loses an option looks broken, and the operator cannot tell a missing
+    feature from a missing model. The page shows them disabled with the
+    reason, and _capture refuses them, so the flag is what enforces this — not
+    the list.
+
+    Availability is one condition: the crop currently produces a verdict. The
+    public site only ever screens, so a crop that could merely collect photos
+    is not something to offer here — that is what public_scans exists to
+    prevent. Which table column records the crop does NOT gate this; see
+    _save_scan for where the crop goes when migration 002 has not been run.
     """
     out = []
     for c in crops_payload():
-        if not c.get("public") or c.get("screening") == "collect_only":
+        if not c.get("public"):
             continue
-        if c["id"] != CROP_ONION and not public_table_has_crop():
-            continue
-        out.append(c)
+        entry = dict(c)
+        if c.get("screening") == "collect_only":
+            entry["available"] = False
+            entry["unavailable_reason"] = _collect_only_reason(c["id"])
+        else:
+            entry["available"] = True
+        out.append(entry)
     return out
+
+
+def available_public_crops():
+    return {c["id"] for c in public_crops() if c.get("available")}
 
 
 def _collect_only_reason(crop):
@@ -1013,8 +1028,9 @@ def api_public_scans():
     try:
         columns = ("id,scan_code,captured_at,pred_label,pred_conf,pred_proba,"
                    "ood_status,borderline,framing_ok")
-        if public_table_has_crop():
-            columns += ",crop"
+        # Same two homes as _save_scan writes to, read back under one name so
+        # the page does not have to know which era a row was stored in.
+        columns += ",crop" if public_table_has_crop() else ",crop:quality_notes->>crop"
         rows = client.select(
             DATASETS[DATASET_PUBLIC]["table"],
             columns=columns,
@@ -1023,6 +1039,7 @@ def api_public_scans():
         )
         return jsonify({"rows": rows, "label_text": LABEL_TEXT,
                         "crops": {c["id"]: c["label"] for c in public_crops()},
+                        "default_crop": DEFAULT_CROP,
                         "disclaimer": RESULT_DISCLAIMER})
     except Exception as exc:  # noqa: BLE001
         return jsonify({"error": str(exc)[:200], "rows": []}), 500
@@ -1180,7 +1197,7 @@ def _capture(dataset):
     # page can be holding a stale one. Refusing is deliberate: silently
     # scanning the clove as a shallot instead would hand back a confident
     # verdict from a model that has never seen garlic.
-    if dataset == DATASET_PUBLIC and crop not in {c["id"] for c in public_crops()}:
+    if dataset == DATASET_PUBLIC and crop not in available_public_crops():
         return jsonify({"error": f"ตอนนี้เว็บสาธารณะยังคัดกรอง{CROPS[crop]['label']}ไม่ได้ "
                                  "กรุณาโหลดหน้านี้ใหม่แล้วลองอีกครั้ง"}), 400
 
@@ -1388,11 +1405,18 @@ def _save_scan(session, result, checks):
                 "framing_failed_views": checks["framing_failed"],
             },
         }
-        # public_scans can only take a crop once migration 002 has been run
-        # (see supabase/migrations/002_add_crop_public_scans.sql); sending the
-        # column before that fails the whole insert, losing the scan.
+        # Which crop was scanned is the one thing in a row that cannot be
+        # recomputed later, so it is always recorded — the only question is
+        # where. public_scans gets a real column once migration 002 has been
+        # run (queryable, constrained); until then it goes in quality_notes,
+        # which is jsonb and already there. Sending a column that does not
+        # exist fails the whole insert and loses the scan, so the two cases
+        # are kept apart rather than hoping.
+        crop = session.get("crop", DEFAULT_CROP)
         if table == "scans" or public_table_has_crop():
-            payload["crop"] = session.get("crop", DEFAULT_CROP)
+            payload["crop"] = crop
+        else:
+            payload["quality_notes"]["crop"] = crop
         # A crop with no model produces no prediction, so every model-derived
         # column stays null. Writing 0 or "unknown" instead would make an
         # unscored row indistinguishable from one the model called negative.
